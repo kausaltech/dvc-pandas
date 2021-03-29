@@ -1,0 +1,21 @@
+[build-system]
+requires = [
+    "setuptools>=42",
+    "wheel"
+]
+build-backend = "setuptools.build_meta"
+
+
+[tool.tox]
+legacy_tox_ini = """
+[tox]
+envlist = flake8, py36
+
+[testenv]
+deps = pytest
+commands = pytest
+
+[testenv:flake8]
+deps = flake8
+commands = flake8 src tests setup.py
+"""
