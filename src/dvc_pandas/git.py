@@ -2,17 +2,24 @@ import git
 from appdirs import user_cache_dir
 
 
-def repo_dir_from_url(url):
-    return url.replace('https://', '', 1)
+CACHE_DIR = user_cache_dir('dvc-pandas', 'kausaltech')
 
 
-def get_updated_repo(repo_url):
-    cache_dir = user_cache_dir('dvc-pandas', 'kausaltech')
-    repo_dir = f'{cache_dir}/{repo_dir_from_url(repo_url)}'
+def repo_path(url):
+    scheme, path = url.split(':', 1)
+    path = path.strip('/')
+    return f'{scheme}/{path}'
+
+
+def repo_cache_dir(url):
+    return f'{CACHE_DIR}/{repo_path(url)}'
+
+
+def get_repo(url):
+    """Get repo from cache, clone it if it is not cached yet"""
+    repo_dir = repo_cache_dir(url)
     try:
         repo = git.Repo(repo_dir)
     except git.exc.NoSuchPathError:
-        repo = git.Repo.clone_from(repo_url, repo_dir)
-    else:
-        repo.remote('origin').pull()
+        repo = git.Repo.clone_from(url, repo_dir)
     return repo
