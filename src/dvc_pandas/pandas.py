@@ -24,7 +24,7 @@ def pull_datasets(repo_url):
     git_repo.remote().pull()
 
 
-def push_dataset(dataset, repo_url, dataset_path, remote):
+def push_dataset(dataset, repo_url, dataset_path, dvc_remote=None):
     git_repo = get_repo(repo_url)
     dvc_repo = dvc.repo.Repo(git_repo.working_dir)
     # Make dataset_path absolute
@@ -35,7 +35,7 @@ def push_dataset(dataset, repo_url, dataset_path, remote):
         dvc_file_path = dataset_path.parent / (dataset_path.name + '.dvc')
         dvc_repo.remove(str(dvc_file_path))
         dvc_repo.add(str(dataset_path))
-        dvc_repo.push(str(dvc_file_path))
+        dvc_repo.push(str(dvc_file_path), remote=dvc_remote)
         # Stage .dvc file and .gitignore
         gitignore_path = dvc_file_path.parent / '.gitignore'
         git_repo.index.add([str(dvc_file_path), str(gitignore_path)])
@@ -45,8 +45,9 @@ def push_dataset(dataset, repo_url, dataset_path, remote):
         # Restore original data
         # git reset --hard origin/master
         git_repo.head.reset('origin/master', index=True, working_tree=True)
-        dvc_repo.checkout(str(dataset_path))
-        # TODO: Run dvc_repo.gc(all_commits=True, cloud=True), but at the moment this produces an error
+        dvc_repo.checkout(str(dataset_path), force=True)
+        # Remove rolled back stuff that may be left on the remote
+        dvc_repo.gc(all_commits=True, cloud=True, remote=dvc_remote)
         raise
     finally:
         # Remove old version (or new if we rolled back) from cache
