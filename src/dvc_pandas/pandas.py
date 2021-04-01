@@ -1,4 +1,3 @@
-import dvc.exceptions
 import dvc.repo
 import pandas as pd
 from pathlib import Path
@@ -47,9 +46,8 @@ def push_dataset(dataset, repo_url, dataset_path, remote):
         # git reset --hard origin/master
         git_repo.head.reset('origin/master', index=True, working_tree=True)
         dvc_repo.checkout(str(dataset_path))
-        # Remove `dataset` from cache
-        dvc_repo.gc(all_commits=True)
-        # TODO: Run gc with cloud=True, but at the moment this produces an error
+        # TODO: Run dvc_repo.gc(all_commits=True, cloud=True), but at the moment this produces an error
         raise
-    # Remove old version from cache
-    dvc_repo.gc(workspace=True)
+    finally:
+        # Remove old version (or new if we rolled back) from cache
+        dvc_repo.gc(workspace=True)
