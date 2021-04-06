@@ -47,9 +47,12 @@ def push_dataset(dataset, identifier, repo_url=None, dvc_remote=None):
         # Stage .dvc file and .gitignore
         gitignore_path = dvc_file_path.parent / '.gitignore'
         git_repo.index.add([str(dvc_file_path), str(gitignore_path)])
-        git_repo.index.commit(f'Update {dataset_path.name}')
-        logger.debug("Push to git repository")
-        git_repo.remote().push()
+        if git_repo.is_dirty():
+            git_repo.index.commit(f'Update {dataset_path.name}')
+            logger.debug("Push to git repository")
+            git_repo.remote().push()
+        else:
+            logger.debug("No changes to git repository")
     except Exception:
         # Restore original data
         # git reset --hard origin/master
