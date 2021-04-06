@@ -3,6 +3,7 @@ import hashlib
 import logging
 import os
 from appdirs import user_cache_dir
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +19,15 @@ def repo_cache_dir(url):
 
 
 def get_repo(url=None):
-    """Get repo from cache, clone it if it is not cached yet"""
     if url is None:
         try:
             url = os.environ['DVC_PANDAS_REPOSITORY']
         except KeyError:
             raise Exception("No repository URL provided and DVC_PANDAS_REPOSITORY not set")
+
+    # Don't use cache if url is a local repository
+    if Path(url).exists():
+        return git.Repo(url)
 
     repo_dir = repo_cache_dir(url)
     try:
