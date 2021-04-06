@@ -29,7 +29,7 @@ def push_dataset(dataset, identifier, repo_url=None, dvc_remote=None):
     if repo_url is None:
         repo_url = os.environ['DVC_PANDAS_REPOSITORY']
     if dvc_remote is None:
-        repo_url = os.environ.get('DVC_PANDAS_REPOSITORY')
+        dvc_remote = os.environ.get('DVC_PANDAS_DVC_REMOTE')
     git_repo = get_repo(repo_url)
     dvc_repo = dvc.repo.Repo(git_repo.working_dir)
     dataset_path = Path(dvc_repo.root_dir) / (identifier + '.parquet')
@@ -51,7 +51,9 @@ def push_dataset(dataset, identifier, repo_url=None, dvc_remote=None):
         git_repo.head.reset('origin/master', index=True, working_tree=True)
         dvc_repo.checkout(str(dataset_path), force=True)
         # Remove rolled back stuff that may be left on the remote
-        dvc_repo.gc(all_commits=True, cloud=True, remote=dvc_remote)
+        # dvc_repo.gc(all_commits=True, cloud=True, remote=dvc_remote)
+        # TODO: Before reinstating the previous line, make sure gc doesn't delete blobs for which we don't have a git
+        # commit because our git repository is outdated.
         raise
     finally:
         # Remove old version (or new if we rolled back) from cache
