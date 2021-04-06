@@ -1,34 +1,38 @@
 import dvc.repo
+import os
 import pandas as pd
 from pathlib import Path
 
 from .git import get_repo
 
 
-def load_dataset(repo_url, dataset_path):
-    """Load dataset from (cached) repo
-
-    `dataset_path` is a relative path to a parquet file in the repo.
-    """
+def load_dataset(identifier, repo_url=None):
+    """Load dataset from (cached) repo"""
+    if repo_url is None:
+        repo_url = os.environ['DVC_PANDAS_REPOSITORY']
     git_repo = get_repo(repo_url)
     dvc_repo = dvc.repo.Repo(git_repo.working_dir)
-    # Make dataset_path absolute
-    dataset_path = Path(dvc_repo.root_dir) / dataset_path
+    dataset_path = Path(dvc_repo.root_dir) / (identifier + '.parquet')
     dvc_repo.pull(str(dataset_path))
     return pd.read_parquet(dataset_path)
 
 
-def pull_datasets(repo_url):
+def pull_datasets(repo_url=None):
     """Make sure the given repo exists in the cache and is pulled to the latest version"""
+    if repo_url is None:
+        repo_url = os.environ['DVC_PANDAS_REPOSITORY']
     git_repo = get_repo(repo_url)
     git_repo.remote().pull()
 
 
-def push_dataset(dataset, repo_url, dataset_path, dvc_remote=None):
+def push_dataset(dataset, identifier, repo_url=None, dvc_remote=None):
+    if repo_url is None:
+        repo_url = os.environ['DVC_PANDAS_REPOSITORY']
+    if dvc_remote is None:
+        repo_url = os.environ.get('DVC_PANDAS_REPOSITORY')
     git_repo = get_repo(repo_url)
     dvc_repo = dvc.repo.Repo(git_repo.working_dir)
-    # Make dataset_path absolute
-    dataset_path = Path(dvc_repo.root_dir) / dataset_path
+    dataset_path = Path(dvc_repo.root_dir) / (identifier + '.parquet')
     dataset.to_parquet(dataset_path)
     try:
         # Remove old .dvc file and replace it with a new one
