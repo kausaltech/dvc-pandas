@@ -1,8 +1,10 @@
 import git
 import hashlib
+import logging
 import os
 from appdirs import user_cache_dir
 
+logger = logging.getLogger(__name__)
 
 CACHE_DIR = user_cache_dir('dvc-pandas', 'kausaltech')
 
@@ -27,5 +29,6 @@ def get_repo(url=None):
     try:
         repo = git.Repo(repo_dir)
     except git.exc.NoSuchPathError:
+        logger.debug(f"Clone git repository {url} to {repo_dir}")
         repo = git.Repo.clone_from(url, repo_dir)
     return repo
