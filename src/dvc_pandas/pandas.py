@@ -19,6 +19,14 @@ def load_dataset(identifier, repo_url=None):
     return pd.read_parquet(dataset_path)
 
 
+def has_dataset(identifier, repo_url=None):
+    """Check if dataset exists in repo"""
+    git_repo = get_repo(repo_url)
+    dvc_repo = dvc.repo.Repo(git_repo.working_dir)
+    dataset_path = Path(dvc_repo.root_dir) / (identifier + '.parquet.dvc')
+    return os.path.exists(dataset_path)
+
+
 def pull_datasets(repo_url=None):
     """Make sure the given repo exists in the cache and is pulled to the latest version"""
     git_repo = get_repo(repo_url)
