@@ -3,10 +3,23 @@ import os
 import logging
 import pandas as pd
 from pathlib import Path
+from ruamel.yaml import YAML
 
 from .git import get_repo
 
 logger = logging.getLogger(__name__)
+
+
+def set_dvc_file_metadata(dvc_file_path, metadata=None):
+    yaml = YAML()
+    with open(dvc_file_path, 'rt') as file:
+        data = yaml.load(file)
+    if metadata is None:
+        data.pop('meta', None)
+    else:
+        data['meta'] = metadata
+    with open(dvc_file_path, 'w') as file:
+        yaml.dump(data, file)
 
 
 def load_dataset(identifier, repo_url=None):
@@ -34,7 +47,7 @@ def pull_datasets(repo_url=None):
     git_repo.remote().pull()
 
 
-def push_dataset(dataset, identifier, repo_url=None, dvc_remote=None):
+def push_dataset(dataset, identifier, repo_url=None, dvc_remote=None, metadata=None):
     if dvc_remote is None:
         dvc_remote = os.environ.get('DVC_PANDAS_DVC_REMOTE')
     git_repo = get_repo(repo_url)
@@ -50,6 +63,8 @@ def push_dataset(dataset, identifier, repo_url=None, dvc_remote=None):
             dvc_repo.remove(str(dvc_file_path))
         logger.debug(f"Add file {dataset_path} to DVC")
         dvc_repo.add(str(dataset_path))
+        logger.debug(f"Set metadata to {metadata}")
+        set_dvc_file_metadata(dvc_file_path, metadata)
         logger.debug(f"Push file {dvc_file_path} to DVC remote {dvc_remote}")
         dvc_repo.push(str(dvc_file_path), remote=dvc_remote)
         # Stage .dvc file and .gitignore
