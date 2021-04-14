@@ -27,8 +27,9 @@ def load_dataset(identifier, repo_url=None):
     git_repo = git.get_repo(repo_url)
     dvc_repo = dvc.repo.Repo(git_repo.working_dir)
     dataset_path = Path(dvc_repo.root_dir) / (identifier + '.parquet')
-    logger.debug(f"Pull dataset {dataset_path} from DVC")
-    dvc_repo.pull(str(dataset_path))
+    if not dataset_path.exists():
+        logger.debug(f"Pull dataset {dataset_path} from DVC")
+        dvc_repo.pull(str(dataset_path))
     return pd.read_parquet(dataset_path)
 
 
