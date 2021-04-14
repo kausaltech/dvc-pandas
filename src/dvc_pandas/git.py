@@ -8,6 +8,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 CACHE_DIR = user_cache_dir('dvc-pandas', 'kausaltech')
+PUSH_SUCCEEDED_FLAGS = git.remote.PushInfo.FAST_FORWARD | git.remote.PushInfo.NEW_HEAD
 
 
 def repo_path(url):
@@ -36,3 +37,13 @@ def get_repo(url=None):
         logger.debug(f"Clone git repository {url} to {repo_dir}")
         repo = git.Repo.clone_from(url, repo_dir)
     return repo
+
+
+def push(repo):
+    """Push to remote; raise an exception if it failed."""
+    result, = repo.remote().push()
+    # We don't accept any flags except those in PUSH_SUCCEEDED_FLAGS, and there should be at least one of them
+    success_flags = result.flags & PUSH_SUCCEEDED_FLAGS
+    fail_flags = result.flags ^ success_flags
+    if fail_flags or not success_flags:
+        raise Exception(f"Push to git repository failed: {result.summary}")

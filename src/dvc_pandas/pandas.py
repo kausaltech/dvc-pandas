@@ -5,7 +5,7 @@ import pandas as pd
 from pathlib import Path
 from ruamel.yaml import YAML
 
-from .git import get_repo
+from . import git
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ def set_dvc_file_metadata(dvc_file_path, metadata=None):
 
 def load_dataset(identifier, repo_url=None):
     """Load dataset from (cached) repo"""
-    git_repo = get_repo(repo_url)
+    git_repo = git.get_repo(repo_url)
     dvc_repo = dvc.repo.Repo(git_repo.working_dir)
     dataset_path = Path(dvc_repo.root_dir) / (identifier + '.parquet')
     logger.debug(f"Pull dataset {dataset_path} from DVC")
@@ -34,7 +34,7 @@ def load_dataset(identifier, repo_url=None):
 
 def has_dataset(identifier, repo_url=None):
     """Check if dataset exists in repo"""
-    git_repo = get_repo(repo_url)
+    git_repo = git.get_repo(repo_url)
     dvc_repo = dvc.repo.Repo(git_repo.working_dir)
     dataset_path = Path(dvc_repo.root_dir) / (identifier + '.parquet.dvc')
     return os.path.exists(dataset_path)
@@ -42,15 +42,22 @@ def has_dataset(identifier, repo_url=None):
 
 def pull_datasets(repo_url=None):
     """Make sure the given repo exists in the cache and is pulled to the latest version"""
-    git_repo = get_repo(repo_url)
+    git_repo = git.get_repo(repo_url)
     logger.debug(f"Pull from git remote for repository {repo_url}")
     git_repo.remote().pull()
 
 
 def push_dataset(dataset, identifier, repo_url=None, dvc_remote=None, metadata=None):
+    """
+    Add the given dataset as a parquet file to DVC.
+
+    Updates the git repository first.
+    """
     if dvc_remote is None:
         dvc_remote = os.environ.get('DVC_PANDAS_DVC_REMOTE')
-    git_repo = get_repo(repo_url)
+    git_repo = git.get_repo(repo_url)
+    logger.debug(f"Pull from git remote for repository {repo_url}")
+    git_repo.remote().pull()
     dvc_repo = dvc.repo.Repo(git_repo.working_dir)
     dataset_path = Path(dvc_repo.root_dir) / (identifier + '.parquet')
     os.makedirs(dataset_path.parent, exist_ok=True)
@@ -73,7 +80,7 @@ def push_dataset(dataset, identifier, repo_url=None, dvc_remote=None, metadata=N
         if git_repo.is_dirty():
             git_repo.index.commit(f'Update {dataset_path.name}')
             logger.debug("Push to git repository")
-            git_repo.remote().push()
+            git.push(git_repo)
         else:
             logger.debug("No changes to git repository")
     except Exception:
