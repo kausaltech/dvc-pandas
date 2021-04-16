@@ -11,31 +11,44 @@ CACHE_DIR = user_cache_dir('dvc-pandas', 'kausaltech')
 PUSH_SUCCEEDED_FLAGS = git.remote.PushInfo.FAST_FORWARD | git.remote.PushInfo.NEW_HEAD
 
 
-def repo_path(url):
-    return hashlib.md5(url.encode('utf-8')).hexdigest()
-
-
 def repo_cache_dir(url):
-    return f'{CACHE_DIR}/{repo_path(url)}'
+    """Return cache directory for the given URL."""
+    dir_name = hashlib.md5(url.encode('utf-8')).hexdigest()
+    return Path(CACHE_DIR) / dir_name
 
 
-def get_repo(url=None):
-    if url is None:
+def local_repo_dir(location=None):
+    """
+    Return local repository directory for `location`.
+
+    If `location` is a URL, returns the corresponding directory in the cache. If it is a path to a local directory,
+    returns the directory.
+    """
+    if location is None:
         try:
-            url = os.environ['DVC_PANDAS_REPOSITORY']
+            location = os.environ['DVC_PANDAS_REPOSITORY']
         except KeyError:
-            raise Exception("No repository URL provided and DVC_PANDAS_REPOSITORY not set")
+            raise Exception("No repository location provided and DVC_PANDAS_REPOSITORY not set")
 
-    # Don't use cache if url is a local repository
-    if Path(url).exists():
-        return git.Repo(url)
+    # Don't use cache if location is a local repository
+    if Path(location).exists():
+        return location
 
-    repo_dir = repo_cache_dir(url)
+    return repo_cache_dir(location)
+
+
+def get_repo(location=None):
+    """
+    Return git repository for the given location, which can either be a URL or a path to a local repository.
+
+    If given a URL and the repository does not exist in the cache, clones it first into the cache.
+    """
+    repo_dir = local_repo_dir(location)
     try:
         repo = git.Repo(repo_dir)
     except git.exc.NoSuchPathError:
-        logger.debug(f"Clone git repository {url} to {repo_dir}")
-        repo = git.Repo.clone_from(url, repo_dir)
+        logger.debug(f"Clone git repository {location} to {repo_dir}")
+        repo = git.Repo.clone_from(location, repo_dir)
     return repo
 
 
