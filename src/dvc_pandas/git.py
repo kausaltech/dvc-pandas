@@ -11,17 +11,18 @@ CACHE_DIR = user_cache_dir('dvc-pandas', 'kausaltech')
 PUSH_SUCCEEDED_FLAGS = git.remote.PushInfo.FAST_FORWARD | git.remote.PushInfo.NEW_HEAD
 
 
-def repo_cache_dir(url):
+def cache_dir_for_url(url):
     """Return cache directory for the given URL."""
-    dir_name = hashlib.md5(url.encode('utf-8')).hexdigest()
+    dir_name = hashlib.md5(str(url).encode('utf-8')).hexdigest()
     return Path(CACHE_DIR) / dir_name
 
 
-def local_repo_dir(location=None):
+def local_cache_dir(location=None, cache_local_repository=False):
     """
     Return local repository directory for `location`.
 
-    If `location` is a URL, returns the corresponding directory in the cache. If it is a path to a local directory,
+    If `location` is a URL, returns the corresponding directory in the cache.
+    If it is a path to a local directory and cache_local_repository is False,
     returns the directory.
     """
     if location is None:
@@ -31,19 +32,19 @@ def local_repo_dir(location=None):
             raise Exception("No repository location provided and DVC_PANDAS_REPOSITORY not set")
 
     # Don't use cache if location is a local repository
-    if Path(location).exists():
+    if not cache_local_repository and Path(location).exists():
         return location
 
-    return repo_cache_dir(location)
+    return cache_dir_for_url(location)
 
 
-def get_repo(location=None):
+def get_cache_repo(location=None, cache_local_repository=False):
     """
     Return git repository for the given location, which can either be a URL or a path to a local repository.
 
     If given a URL and the repository does not exist in the cache, clones it first into the cache.
     """
-    repo_dir = local_repo_dir(location)
+    repo_dir = local_cache_dir(location, cache_local_repository=cache_local_repository)
     try:
         repo = git.Repo(repo_dir)
     except git.exc.NoSuchPathError:
