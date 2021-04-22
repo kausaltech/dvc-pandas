@@ -1,11 +1,21 @@
 import dvc.repo
 import logging
+import os
 from ruamel.yaml import YAML
 
 from .git import push as git_push
 
 
 logger = logging.getLogger(__name__)
+
+
+def _need_commit(git_repo):
+    if not git_repo.is_dirty():
+        return False
+    # We don't commit if the only files changed are .gitignore files. DVC sometimes reorders the lines in .gitignore
+    # even though no dataset has changed.
+    diffs = git_repo.index.diff(git_repo.head.commit)
+    return any(os.path.basename(diff.a_path) != '.gitignore' for diff in diffs)
 
 
 def set_dvc_file_metadata(dvc_file_path, metadata=None):
@@ -45,12 +55,13 @@ def add_file_to_repo(dataset_path, git_repo, dvc_repo=None, dvc_remote=None, met
         git_repo.index.add([str(dvc_file_path), str(gitignore_path)])
 
         # Commit and push
-        if git_repo.is_dirty():
-            git_repo.index.commit(f'Update {dataset_path.name}')
+        if _need_commit(git_repo):
+            relative_path = dataset_path.relative_to(git_repo.working_dir)
+            git_repo.index.commit(f'Update {relative_path}')
             logger.debug("Push to git repository")
             git_push(git_repo)
         else:
-            logger.debug("No changes to git repository")
+            logger.debug("No commit since datasets have not changed")
     except Exception:
         # Restore original data
         # git reset --hard origin/master
