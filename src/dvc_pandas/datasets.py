@@ -23,9 +23,10 @@ class Dataset:
         """
         if metadata and 'units' in metadata:
             raise ValueError("Dataset metadata may not contain the key 'units'.")
-        for column in units.keys():
-            if column not in df.columns:
-                raise ValueError(f"Unit specified for unknown column name '{column}'.")
+        if units is not None:
+            for column in units.keys():
+                if column not in df.columns:
+                    raise ValueError(f"Unit specified for unknown column name '{column}'.")
 
         self.df = df
         self.identifier = identifier
@@ -39,7 +40,14 @@ class Dataset:
 
         Physical units will be stored as part of the metadata using the key `units`.
         """
-        return {**self.metadata, 'units': self.units}
+        if self.metadata is None and self.units is None:
+            return None
+        metadata = {}
+        if self.metadata is not None:
+            metadata = self.metadata
+        if self.units is not None:
+            metadata['units'] = self.units
+        return metadata
 
     def __str__(self):
         return self.identifier
@@ -120,5 +128,5 @@ def push_dataset(dataset, repo_url=None, dvc_remote=None):
     git_repo = pull_datasets(repo_url)
     parquet_path = Path(git_repo.working_dir) / (dataset.identifier + '.parquet')
     os.makedirs(parquet_path.parent, exist_ok=True)
-    dataset.to_parquet(parquet_path)
+    dataset.df.to_parquet(parquet_path)
     add_file_to_repo(parquet_path, git_repo, dvc_remote=dvc_remote, metadata=dataset.dvc_metadata)
