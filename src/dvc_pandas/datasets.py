@@ -33,6 +33,9 @@ class Dataset:
         self.units = units
         self.metadata = metadata
 
+    def copy(self):
+        return Dataset(self.df.copy(), self.identifier, units=self.units, metadata=self.metadata)
+
     @property
     def dvc_metadata(self):
         """
@@ -48,6 +51,10 @@ class Dataset:
         if self.units is not None:
             metadata['units'] = self.units
         return metadata
+
+    def equals(self, other):
+        compare_attrs = ('identifier', 'units', 'metadata')
+        return self.df.equals(other.df) and all(getattr(self, a) == getattr(other, a) for a in compare_attrs)
 
     def __str__(self):
         return self.identifier
