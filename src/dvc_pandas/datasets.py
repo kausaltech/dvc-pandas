@@ -1,6 +1,8 @@
 import os
 import logging
+import pandas as pd
 from pathlib import Path
+from pint_pandas import PintArray
 from ruamel.yaml import YAML
 
 from .dvc import add_file_to_repo, pull as dvc_pull
@@ -9,13 +11,20 @@ from .git import get_cache_repo, local_cache_dir
 logger = logging.getLogger(__name__)
 
 
+def _quantify_series(series, unit):
+    if unit:
+        return PintArray(series, unit)
+    return series
+
+
 class Dataset:
     def __init__(self, df, identifier, units=None, metadata=None):
         """
         Create a dataset from a Pandas DataFrame, an identifier and optional metadata.
 
         If `units` is specified, it should be a dict that maps (some of) the columns of `df` to physical units. If any
-        key of this dict is not a column in `df`, a ValueError is raised.
+        key of this dict is not a column in `df`, a ValueError is raised. The DataFrame in this dataset will use
+        instances of PintArray of the respective unit for each column specified in `units`.
 
         You can specify metadata to be stored in the .dvc file by setting the `metadata` parameter to a dict.  Units
         will be stored in the metadata using the key `units`, so the `metadata` dict is not allowed to contain this key
@@ -28,7 +37,14 @@ class Dataset:
                 if column not in df.columns:
                     raise ValueError(f"Unit specified for unknown column name '{column}'.")
 
-        self.df = df
+        if units:
+            self.df = pd.DataFrame({
+                column: _quantify_series(df[column], units.get(column))
+                for column in df.columns
+            })
+        else:
+            self.df = df.copy()
+
         self.identifier = identifier
         self.units = units
         self.metadata = metadata

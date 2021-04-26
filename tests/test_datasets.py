@@ -70,7 +70,7 @@ def cache(upstream, tmp_path, monkeypatch):
 
 @pytest.fixture
 def df():
-    return pd.DataFrame([(1, 2), (3, 4)], columns=['a', 'b'])
+    return pd.DataFrame([(1.0, 2.0), (3.0, 4.0)], columns=['a', 'b'])
 
 
 @pytest.fixture
@@ -94,6 +94,18 @@ def test_dvc_metadata_contains_units(df):
     assert ds.dvc_metadata['units'] == units
 
 
+def test_dataset_units():
+    data = {
+        'speed': ([1.0], 'KiB/s'),
+        'time': ([24/60], 'min'),
+    }
+    df = pd.DataFrame({column: values for column, (values, _) in data.items()})
+    units = {column: unit for column, (_, unit) in data.items()}
+    ds = Dataset(df, 'test', units=units)
+    ds.df['foo'] = ds.df.speed * ds.df.time
+    assert list(ds.df.foo.pint.to('MB').values.data) == [0.024576]
+
+
 def test_load_dataset_cached(upstream, cache, dataset):
     # TODO: Make sure the file from the cache is returned and not one fetched from upstream / cloud
     # assert False
@@ -113,6 +125,11 @@ def test_load_dataset_not_cached(upstream, cache, dataset):
 def test_load_dataset_does_not_exist(upstream):
     with pytest.raises(NoOutputOrStageError):
         load_dataset('does-not-exist', upstream, cache_local_repository=True)
+
+
+def test_load_dataframe(upstream, dataset):
+    loaded = load_dataframe('dataset', upstream, cache_local_repository=True)
+    assert loaded.equals(dataset.df)
 
 
 def test_has_dataset_exists(upstream):
