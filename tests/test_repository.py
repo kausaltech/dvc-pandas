@@ -1,10 +1,9 @@
-import pandas as pd
 import pytest
 from dvc.exceptions import NoOutputOrStageError
 
-from dvc_pandas import Dataset, has_dataset, load_dataframe, load_dataset
 from dvc_pandas.dvc import set_dvc_file_metadata
 from dvc_pandas.git import get_cache_repo
+from dvc_pandas.repository import Repository
 
 from tests.dir_helpers import TmpDir
 
@@ -52,6 +51,11 @@ def upstream(tmp_path, local_cloud, dataset):
     return workspace
 
 
+@pytest.fixture
+def repo(upstream):
+    return Repository(upstream, cache_local_repository=True)
+
+
 @pytest.fixture(autouse=True)
 def cache(upstream, tmp_path, monkeypatch):
     cache_dir = tmp_path / 'cache'
@@ -68,83 +72,44 @@ def cache(upstream, tmp_path, monkeypatch):
     return workspace
 
 
-@pytest.fixture
-def df():
-    return pd.DataFrame([(1.0, 2.0), (3.0, 4.0)], columns=['a', 'b'])
-
-
-@pytest.fixture
-def dataset(df):
-    return Dataset(df, 'dataset')
-
-
-def test_init_metadata_with_units_key(df):
-    with pytest.raises(ValueError):
-        Dataset(df, 'test', metadata={'units': {df.columns[0]: 'foo'}})
-
-
-def test_init_unit_for_invalid_column(df):
-    with pytest.raises(ValueError):
-        Dataset(df, 'test', units={'does-not-exist': 'kg'})
-
-
-def test_dvc_metadata_contains_units(df):
-    units = {df.columns[0]: 'kg'}
-    ds = Dataset(df, 'test', units=units)
-    assert ds.dvc_metadata['units'] == units
-
-
-def test_dataset_units():
-    data = {
-        'speed': ([1.0], 'KiB/s'),
-        'time': ([24/60], 'min'),
-    }
-    df = pd.DataFrame({column: values for column, (values, _) in data.items()})
-    units = {column: unit for column, (_, unit) in data.items()}
-    ds = Dataset(df, 'test', units=units)
-    ds.df['foo'] = ds.df.speed * ds.df.time
-    assert list(ds.df.foo.pint.to('MB').values.data) == [0.024576]
-
-
-def test_load_dataset_cached(upstream, cache, dataset):
+def test_load_dataset_cached(repo, cache, dataset):
     # TODO: Make sure the file from the cache is returned and not one fetched from upstream / cloud
-    # assert False
-    loaded = load_dataset('dataset', upstream, cache_local_repository=True)
+    loaded = repo.load_dataset('dataset')
     assert loaded.equals(dataset)
 
 
-def test_load_dataset_not_cached(upstream, cache, dataset):
+def test_load_dataset_not_cached(repo, cache, dataset):
     with cache.chdir():
         cache.dvc.remove('dataset.parquet.dvc', outs=True)
     cache.dvc.gc(workspace=True)
     cache.scm.checkout('master')
-    loaded = load_dataset('dataset', upstream, cache_local_repository=True)
+    loaded = repo.load_dataset('dataset')
     assert loaded.equals(dataset)
 
 
-def test_load_dataset_does_not_exist(upstream):
+def test_load_dataset_does_not_exist(repo):
     with pytest.raises(NoOutputOrStageError):
-        load_dataset('does-not-exist', upstream, cache_local_repository=True)
+        repo.load_dataset('does-not-exist')
 
 
-def test_load_dataframe(upstream, dataset):
-    loaded = load_dataframe('dataset', upstream, cache_local_repository=True)
+def test_load_dataframe(repo, dataset):
+    loaded = repo.load_dataframe('dataset')
     assert loaded.equals(dataset.df)
 
 
-def test_has_dataset_exists(upstream):
-    assert has_dataset('dataset', upstream, cache_local_repository=True)
+def test_has_dataset_exists(repo):
+    assert repo.has_dataset('dataset')
 
 
-def test_has_dataset_does_not_exist(upstream):
-    assert not has_dataset('does-not-exist', upstream, cache_local_repository=True)
+def test_has_dataset_does_not_exist(repo):
+    assert not repo.has_dataset('does-not-exist')
 
 
-def test_load_dataset_returns_cached_even_if_updated(upstream, dataset):
-    ds = load_dataset('dataset', upstream, cache_local_repository=True)
+def test_load_dataset_returns_cached_even_if_updated(upstream, repo, dataset):
+    ds = repo.load_dataset('dataset')
     ds_updated = ds.copy()
     ds_updated.df['b'] += 1
     add_dataset(upstream, ds_updated, commit_message="Update dataset")
 
-    loaded = load_dataset('dataset', upstream, cache_local_repository=True)
+    loaded = repo.load_dataset('dataset')
     assert loaded.equals(ds)
