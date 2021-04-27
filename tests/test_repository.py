@@ -1,8 +1,8 @@
 import pytest
 from dvc.exceptions import NoOutputOrStageError
 
-from dvc_pandas.dvc import set_dvc_file_metadata
 from dvc_pandas.git import get_cache_repo
+from dvc_pandas.dvc import set_dvc_file_metadata
 from dvc_pandas.repository import Repository
 
 from tests.dir_helpers import TmpDir
