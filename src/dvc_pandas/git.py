@@ -7,17 +7,20 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-CACHE_DIR = user_cache_dir('dvc-pandas', 'kausaltech')
+DEFAULT_CACHE_ROOT = user_cache_dir('dvc-pandas', 'kausaltech')
 PUSH_SUCCEEDED_FLAGS = git.remote.PushInfo.FAST_FORWARD | git.remote.PushInfo.NEW_HEAD
 
 
-def cache_dir_for_url(url):
-    """Return cache directory for the given URL."""
+def cache_dir_for_url(url, cache_root=None):
+    """Return directory within the given cache_root directory for the given URL."""
+    if cache_root is None:
+        cache_root = DEFAULT_CACHE_ROOT
+
     dir_name = hashlib.md5(str(url).encode('utf-8')).hexdigest()
-    return Path(CACHE_DIR) / dir_name
+    return Path(cache_root) / dir_name
 
 
-def local_cache_dir(location=None, cache_local_repository=False):
+def local_cache_dir(location=None, cache_local_repository=False, cache_root=None):
     """
     Return local repository directory for `location`.
 
@@ -35,16 +38,16 @@ def local_cache_dir(location=None, cache_local_repository=False):
     if not cache_local_repository and Path(location).exists():
         return location
 
-    return cache_dir_for_url(location)
+    return cache_dir_for_url(location, cache_root)
 
 
-def get_cache_repo(location=None, cache_local_repository=False):
+def get_cache_repo(location=None, cache_local_repository=False, cache_root=None):
     """
     Return git repository for the given location, which can either be a URL or a path to a local repository.
 
     If given a URL and the repository does not exist in the cache, clones it first into the cache.
     """
-    repo_dir = local_cache_dir(location, cache_local_repository=cache_local_repository)
+    repo_dir = local_cache_dir(location, cache_local_repository=cache_local_repository, cache_root=cache_root)
     try:
         repo = git.Repo(repo_dir)
     except git.exc.NoSuchPathError:

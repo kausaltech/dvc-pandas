@@ -41,7 +41,7 @@ class Dataset:
         self.metadata = metadata
 
     def copy(self):
-        return Dataset(self.df.copy(), self.identifier, units=self.units, metadata=self.metadata)
+        return Dataset(self.df, self.identifier, units=self.units, metadata=self.metadata)
 
     @property
     def dvc_metadata(self):
