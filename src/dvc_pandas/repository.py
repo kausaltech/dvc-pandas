@@ -172,3 +172,32 @@ class Repository:
         # even though no file has changed.
         diffs = self.git_repo.index.diff(self.git_repo.head.commit)
         return any(os.path.basename(diff.a_path) != '.gitignore' for diff in diffs)
+
+
+# FIXME: Make common base class instead of extending Repository
+class StaticRepository(Repository):
+    def __init__(self, config):
+        self.datasets = {dataset['identifier']: dataset for dataset in config}
+
+    def load_dataset(self, identifier):
+        import pandas as pd
+        spec = self.datasets[identifier]
+        # TODO: Index?
+        df = pd.DataFrame(columns=spec['columns'], data=spec['data'])
+        # TODO: units and metadata
+        return Dataset(df, identifier, units=None, metadata=None)
+
+    def has_dataset(self, identifier):
+        return identifier in self.datasets
+
+    def pull_datasets(self):
+        pass
+
+    def push_dataset(self, dataset):
+        raise Exception("Cannot push dataset to static repository")
+
+    def add(self, dataset):
+        raise Exception("Cannot add to static repository")
+
+    def push(self):
+        raise Exception("Cannot push to static repository")
