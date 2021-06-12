@@ -1,12 +1,18 @@
-import dvc.repo
-import os
 import logging
+import os
 from pathlib import Path
+from typing import List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pandas as pd
 from ruamel.yaml import YAML
 
-from .git import get_cache_repo, push as git_push
-from .dvc import set_dvc_file_metadata
+import dvc.repo
+
 from .dataset import Dataset
+from .dvc import set_dvc_file_metadata
+from .git import get_cache_repo
+from .git import push as git_push
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +24,14 @@ class DatasetStageItem:
 
 
 class Repository:
-    def __init__(self, repo_url=None, dvc_remote=None, cache_local_repository=False, cache_root=None):
+    dvc_remote: Optional[str]
+    repo_url: Optional[str]
+    dataset_stage: List[DatasetStageItem]
+
+    def __init__(
+        self, repo_url: str = None, dvc_remote: str = None, cache_local_repository=False,
+        cache_root=None
+    ):
         """
         Initialize repository.
 
@@ -30,12 +43,14 @@ class Repository:
         self.repo_url = repo_url
         self.dvc_remote = dvc_remote
         self.cache_local_repository = cache_local_repository
-        self.git_repo = get_cache_repo(repo_url, cache_local_repository=cache_local_repository, cache_root=cache_root)
+        self.git_repo = get_cache_repo(
+            repo_url, cache_local_repository=cache_local_repository, cache_root=cache_root
+        )
         self.repo_dir = Path(self.git_repo.working_dir)
         self.dvc_repo = dvc.repo.Repo(self.repo_dir)
         self.dataset_stage = []
 
-    def load_dataset(self, identifier):
+    def load_dataset(self, identifier: str) -> Dataset:
         """
         Load dataset with the given identifier from the given repository.
 
@@ -63,14 +78,14 @@ class Repository:
 
         return Dataset(df, identifier, units=units, metadata=metadata)
 
-    def load_dataframe(self, identifier):
+    def load_dataframe(self, identifier: str) -> pd.DataFrame:
         """
         Same as load_dataset, but only provides the DataFrame for convenience.
         """
         dataset = self.load_dataset(identifier)
         return dataset.df
 
-    def has_dataset(self, identifier):
+    def has_dataset(self, identifier: str) -> bool:
         """
         Check if a dataset with the given identifier exists.
         """
@@ -84,7 +99,7 @@ class Repository:
         logger.debug("Pull from git remote")
         self.git_repo.remote().pull()
 
-    def push_dataset(self, dataset):
+    def push_dataset(self, dataset: Dataset):
         """
         Add the given dataset as a parquet file to DVC, create a commit and push it.
 
@@ -121,11 +136,11 @@ class Repository:
             logger.debug("Collect garbage in local DVC repository")
             self.dvc_repo.gc(workspace=True)
 
-    def add(self, dataset):
+    def add(self, dataset: Dataset):
         """Create or update parquet file from dataset, but do not create .dvc file, commit or push."""
         parquet_path = self.repo_dir / (dataset.identifier + '.parquet')
         os.makedirs(parquet_path.parent, exist_ok=True)
-        dataset.df.to_parquet(parquet_path)
+        dataset.df.to_parquet(str(parquet_path))
         self.dataset_stage.append(DatasetStageItem(dataset))
 
     def push(self):
@@ -165,7 +180,7 @@ class Repository:
 
         self.dataset_stage = []
 
-    def _need_commit(self):
+    def _need_commit(self) -> bool:
         if not self.git_repo.is_dirty():
             return False
         # We don't commit if the only files changed are .gitignore files. DVC sometimes reorders the lines in .gitignore

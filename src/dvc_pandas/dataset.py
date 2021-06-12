@@ -1,3 +1,4 @@
+from typing import Dict, Optional
 import pandas as pd
 from pint_pandas import PintArray
 
@@ -9,7 +10,15 @@ def _quantify_series(series, unit):
 
 
 class Dataset:
-    def __init__(self, df, identifier, units=None, metadata=None):
+    identifier: str
+    df: pd.DataFrame
+    units: Optional[Dict[str, str]]
+    metadata: Optional[Dict]
+
+    def __init__(
+        self, df: pd.DataFrame, identifier: str, units: Dict[str, str] = None,
+        metadata: Dict = None
+    ):
         """
         Create a dataset from a Pandas DataFrame, an identifier and optional metadata.
 
@@ -44,7 +53,7 @@ class Dataset:
         return Dataset(self.df, self.identifier, units=self.units, metadata=self.metadata)
 
     @property
-    def dvc_metadata(self):
+    def dvc_metadata(self) -> Optional[Dict]:
         """
         Return the metadata as it should be stored in the .dvc file.
 
@@ -59,7 +68,7 @@ class Dataset:
             metadata['units'] = self.units
         return metadata
 
-    def equals(self, other):
+    def equals(self, other: pd.DataFrame) -> bool:
         compare_attrs = ('identifier', 'units', 'metadata')
         return self.df.equals(other.df) and all(getattr(self, a) == getattr(other, a) for a in compare_attrs)
 

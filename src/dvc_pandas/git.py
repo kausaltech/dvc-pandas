@@ -41,7 +41,7 @@ def local_cache_dir(location=None, cache_local_repository=False, cache_root=None
     return cache_dir_for_url(location, cache_root)
 
 
-def get_cache_repo(location=None, cache_local_repository=False, cache_root=None):
+def get_cache_repo(location=None, cache_local_repository=False, cache_root=None) -> git.Repo:
     """
     Return git repository for the given location, which can either be a URL or a path to a local repository.
 
