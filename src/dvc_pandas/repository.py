@@ -1,10 +1,10 @@
 import logging
 import os
 from pathlib import Path
+from datetime import datetime, timezone
 from typing import List, Optional, TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import pandas as pd
+import pandas as pd
 from ruamel.yaml import YAML
 
 import dvc.repo
@@ -57,8 +57,6 @@ class Repository:
         Returns cached dataset if possible, otherwise clones git repository (if necessary) and pulls dataset from
         DVC.
         """
-        import pandas as pd
-
         parquet_path = self.repo_dir / (identifier + '.parquet')
         if not parquet_path.exists():
             logger.debug(f"Pull dataset {parquet_path} from DVC")
@@ -76,7 +74,10 @@ class Repository:
         else:
             units = metadata.pop('units', None)
 
-        return Dataset(df, identifier, units=units, metadata=metadata)
+        mtime = dvc_file_path.stat().st_mtime
+        modified_at = datetime.fromtimestamp(mtime, tz=timezone.utc)
+
+        return Dataset(df, identifier, modified_at=modified_at, units=units, metadata=metadata)
 
     def load_dataframe(self, identifier: str) -> pd.DataFrame:
         """

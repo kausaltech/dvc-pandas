@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, Optional
 import pandas as pd
 from pint_pandas import PintArray
@@ -10,13 +11,14 @@ def _quantify_series(series, unit):
 
 
 class Dataset:
-    identifier: str
     df: pd.DataFrame
+    identifier: str
+    modified_at: datetime
     units: Optional[Dict[str, str]]
     metadata: Optional[Dict]
 
     def __init__(
-        self, df: pd.DataFrame, identifier: str, units: Dict[str, str] = None,
+        self, df: pd.DataFrame, identifier: str, modified_at: datetime, units: Dict[str, str] = None,
         metadata: Dict = None
     ):
         """
@@ -48,6 +50,7 @@ class Dataset:
         self.identifier = identifier
         self.units = units
         self.metadata = metadata
+        self.modified_at = modified_at
 
     def copy(self):
         return Dataset(self.df, self.identifier, units=self.units, metadata=self.metadata)
