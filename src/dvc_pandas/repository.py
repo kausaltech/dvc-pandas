@@ -58,9 +58,8 @@ class Repository:
         DVC.
         """
         parquet_path = self.repo_dir / (identifier + '.parquet')
-        if not parquet_path.exists():
-            logger.debug(f"Pull dataset {parquet_path} from DVC")
-            self.dvc_repo.pull(str(parquet_path))
+        logger.debug(f"Pull dataset {parquet_path} from DVC")
+        self.dvc_repo.pull(str(parquet_path))
         df = pd.read_parquet(parquet_path)
 
         # Get metadata (including units) from .dvc file
