@@ -50,16 +50,14 @@ class Repository:
         self.dvc_repo = dvc.repo.Repo(self.repo_dir)
         self.dataset_stage = []
 
-    def load_dataset(self, identifier: str) -> Dataset:
+    def load_dataset(self, identifier: str, skip_pull_if_exists=False) -> Dataset:
         """
         Load dataset with the given identifier from the given repository.
-
-        Returns cached dataset if possible, otherwise clones git repository (if necessary) and pulls dataset from
-        DVC.
         """
         parquet_path = self.repo_dir / (identifier + '.parquet')
-        logger.debug(f"Pull dataset {parquet_path} from DVC")
-        self.dvc_repo.pull(str(parquet_path))
+        if not (parquet_path.exists() and skip_pull_if_exists):
+            logger.debug(f"Pull dataset {parquet_path} from DVC")
+            self.dvc_repo.pull(str(parquet_path))
         df = pd.read_parquet(parquet_path)
 
         # Get metadata (including units) from .dvc file
@@ -78,11 +76,11 @@ class Repository:
 
         return Dataset(df, identifier, modified_at=modified_at, units=units, metadata=metadata)
 
-    def load_dataframe(self, identifier: str) -> pd.DataFrame:
+    def load_dataframe(self, identifier: str, skip_pull_if_exists=False) -> pd.DataFrame:
         """
         Same as load_dataset, but only provides the DataFrame for convenience.
         """
-        dataset = self.load_dataset(identifier)
+        dataset = self.load_dataset(identifier, skip_pull_if_exists)
         return dataset.df
 
     def has_dataset(self, identifier: str) -> bool:
@@ -194,7 +192,7 @@ class StaticRepository(Repository):
     def __init__(self, config):
         self.datasets = {dataset['identifier']: dataset for dataset in config}
 
-    def load_dataset(self, identifier):
+    def load_dataset(self, identifier, skip_pull_if_exists=False):
         import pandas as pd
         spec = self.datasets[identifier]
         # TODO: Index?

@@ -13,12 +13,12 @@ def _quantify_series(series, unit):
 class Dataset:
     df: pd.DataFrame
     identifier: str
-    modified_at: datetime
+    modified_at: Optional[datetime]
     units: Optional[Dict[str, str]]
     metadata: Optional[Dict]
 
     def __init__(
-        self, df: pd.DataFrame, identifier: str, modified_at: datetime, units: Dict[str, str] = None,
+        self, df: pd.DataFrame, identifier: str, modified_at: datetime = None, units: Dict[str, str] = None,
         metadata: Dict = None
     ):
         """
