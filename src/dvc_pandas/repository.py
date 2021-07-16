@@ -17,6 +17,23 @@ from .git import push as git_push
 logger = logging.getLogger(__name__)
 
 
+class TemporaryGitCheckout:
+    def __init__(self, repo, commit_id=None):
+        self.repo = repo
+        self.commit_id = commit_id
+        self.original_branch = None
+
+    def __enter__(self):
+        if self.commit_id:
+            self.original_branch = self.repo.active_branch
+            self.repo.head.reference = self.repo.commit(self.commit_id)
+            self.repo.head.reset(index=True, working_tree=True)
+
+    def __exit__(self, *exc):
+        if self.original_branch:
+            self.original_branch.checkout()
+
+
 class DatasetStageItem:
     def __init__(self, dataset):
         self.identifier = dataset.identifier
@@ -50,37 +67,44 @@ class Repository:
         self.dvc_repo = dvc.repo.Repo(self.repo_dir)
         self.dataset_stage = []
 
-    def load_dataset(self, identifier: str, skip_pull_if_exists=False) -> Dataset:
+    def load_dataset(self, identifier: str, skip_pull_if_exists=False, commit=None) -> Dataset:
         """
         Load dataset with the given identifier from the given repository.
+
+        If `skip_pull_if_exists` is True, does not update the dataset if a parquet file exists for the identifier,
+        regardless of the content.
+
+        The `commit` argument can be set to a git commit ID to get the dataset from a specific commit instead of the
+        latest one.
         """
-        parquet_path = self.repo_dir / (identifier + '.parquet')
-        if not (parquet_path.exists() and skip_pull_if_exists):
-            logger.debug(f"Pull dataset {parquet_path} from DVC")
-            self.dvc_repo.pull(str(parquet_path))
-        df = pd.read_parquet(parquet_path)
+        with TemporaryGitCheckout(self.git_repo, commit):
+            parquet_path = self.repo_dir / (identifier + '.parquet')
+            if not (parquet_path.exists() and skip_pull_if_exists):
+                logger.debug(f"Pull dataset {parquet_path} from DVC")
+                self.dvc_repo.pull(str(parquet_path))
+            df = pd.read_parquet(parquet_path)
 
-        # Get metadata (including units) from .dvc file
-        dvc_file_path = parquet_path.parent / (parquet_path.name + '.dvc')
-        yaml = YAML()
-        with open(dvc_file_path, 'rt') as file:
-            metadata = yaml.load(file).get('meta')
+            # Get metadata (including units) from .dvc file
+            dvc_file_path = parquet_path.parent / (parquet_path.name + '.dvc')
+            yaml = YAML()
+            with open(dvc_file_path, 'rt') as file:
+                metadata = yaml.load(file).get('meta')
 
-        if metadata is None:
-            units = None
-        else:
-            units = metadata.pop('units', None)
+            if metadata is None:
+                units = None
+            else:
+                units = metadata.pop('units', None)
 
-        mtime = dvc_file_path.stat().st_mtime
-        modified_at = datetime.fromtimestamp(mtime, tz=timezone.utc)
+            mtime = dvc_file_path.stat().st_mtime
+            modified_at = datetime.fromtimestamp(mtime, tz=timezone.utc)
 
-        return Dataset(df, identifier, modified_at=modified_at, units=units, metadata=metadata)
+            return Dataset(df, identifier, modified_at=modified_at, units=units, metadata=metadata)
 
-    def load_dataframe(self, identifier: str, skip_pull_if_exists=False) -> pd.DataFrame:
+    def load_dataframe(self, identifier: str, skip_pull_if_exists=False, commit=None) -> pd.DataFrame:
         """
         Same as load_dataset, but only provides the DataFrame for convenience.
         """
-        dataset = self.load_dataset(identifier, skip_pull_if_exists)
+        dataset = self.load_dataset(identifier, skip_pull_if_exists, commit)
         return dataset.df
 
     def has_dataset(self, identifier: str) -> bool:
