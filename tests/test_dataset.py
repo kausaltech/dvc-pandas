@@ -23,7 +23,7 @@ def test_dvc_metadata_contains_units(df):
 def test_dataset_units():
     data = {
         'speed': ([1.0], 'KiB/s'),
-        'time': ([24/60], 'min'),
+        'time': ([24 / 60], 'min'),
     }
     df = pd.DataFrame({column: values for column, (values, _) in data.items()})
     units = {column: unit for column, (_, unit) in data.items()}

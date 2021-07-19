@@ -2,7 +2,7 @@ import logging
 import os
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional
 
 import pandas as pd
 from ruamel.yaml import YAML
@@ -43,16 +43,20 @@ class DatasetStageItem:
 class Repository:
     dvc_remote: Optional[str]
     repo_url: Optional[str]
+    commit: Optional[str]
     dataset_stage: List[DatasetStageItem]
 
     def __init__(
         self, repo_url: str = None, dvc_remote: str = None, cache_local_repository=False,
-        cache_root=None
+        cache_root=None, commit=None
     ):
         """
         Initialize repository.
 
         Clones git repository if it's not in the cache.
+
+        If `commit` is specified, the given commit ID will be checked out temporarily for most commands and the
+        repository will be read-only.
         """
         if dvc_remote is None:
             dvc_remote = os.environ.get('DVC_PANDAS_DVC_REMOTE')
@@ -66,18 +70,16 @@ class Repository:
         self.repo_dir = Path(self.git_repo.working_dir)
         self.dvc_repo = dvc.repo.Repo(self.repo_dir)
         self.dataset_stage = []
+        self.commit = commit
 
-    def load_dataset(self, identifier: str, skip_pull_if_exists=False, commit=None) -> Dataset:
+    def load_dataset(self, identifier: str, skip_pull_if_exists=False) -> Dataset:
         """
         Load dataset with the given identifier from the given repository.
 
         If `skip_pull_if_exists` is True, does not update the dataset if a parquet file exists for the identifier,
         regardless of the content.
-
-        The `commit` argument can be set to a git commit ID to get the dataset from a specific commit instead of the
-        latest one.
         """
-        with TemporaryGitCheckout(self.git_repo, commit):
+        with TemporaryGitCheckout(self.git_repo, self.commit):
             parquet_path = self.repo_dir / (identifier + '.parquet')
             if not (parquet_path.exists() and skip_pull_if_exists):
                 logger.debug(f"Pull dataset {parquet_path} from DVC")
@@ -100,19 +102,20 @@ class Repository:
 
             return Dataset(df, identifier, modified_at=modified_at, units=units, metadata=metadata)
 
-    def load_dataframe(self, identifier: str, skip_pull_if_exists=False, commit=None) -> pd.DataFrame:
+    def load_dataframe(self, identifier: str, skip_pull_if_exists=False) -> pd.DataFrame:
         """
         Same as load_dataset, but only provides the DataFrame for convenience.
         """
-        dataset = self.load_dataset(identifier, skip_pull_if_exists, commit)
+        dataset = self.load_dataset(identifier, skip_pull_if_exists)
         return dataset.df
 
     def has_dataset(self, identifier: str) -> bool:
         """
         Check if a dataset with the given identifier exists.
         """
-        dvc_file_path = self.repo_dir / (identifier + '.parquet.dvc')
-        return os.path.exists(dvc_file_path)
+        with TemporaryGitCheckout(self.git_repo, self.commit):
+            dvc_file_path = self.repo_dir / (identifier + '.parquet.dvc')
+            return os.path.exists(dvc_file_path)
 
     def pull_datasets(self):
         """
@@ -133,6 +136,8 @@ class Repository:
         """
         if self.dataset_stage:
             raise ValueError("push_dataset was called with nonempty stage.")
+        if self.read_only:
+            raise ValueError("push_dataset was called while repository is read-only.")
 
         self.pull_datasets()
         parquet_path = self.repo_dir / (dataset.identifier + '.parquet')
@@ -160,6 +165,9 @@ class Repository:
 
     def add(self, dataset: Dataset):
         """Create or update parquet file from dataset, but do not create .dvc file, commit or push."""
+        if self.read_only:
+            raise ValueError("add was called while repository is read-only.")
+
         parquet_path = self.repo_dir / (dataset.identifier + '.parquet')
         os.makedirs(parquet_path.parent, exist_ok=True)
         dataset.df.to_parquet(str(parquet_path))
@@ -167,6 +175,9 @@ class Repository:
 
     def push(self):
         """Upload, commit and push the staged files and clear the stage."""
+        if self.read_only:
+            raise ValueError("add was called while repository is read-only.")
+
         for stage_item in self.dataset_stage:
             path = self.repo_dir / (stage_item.identifier + '.parquet')
 
@@ -201,6 +212,10 @@ class Repository:
             logger.debug("No commit needed")
 
         self.dataset_stage = []
+
+    @property
+    def read_only(self):
+        return self.commit is not None
 
     def _need_commit(self) -> bool:
         if not self.git_repo.is_dirty():
