@@ -27,6 +27,7 @@ class TemporaryGitCheckout:
             self.original_branch = self.repo.active_branch
             self.repo.head.reference = self.repo.commit(self.commit_id)
             self.repo.head.reset(index=True, working_tree=True)
+            # TODO: Pull if commit ID doesn't exist? Flag for enabling this beha
 
     def __exit__(self, *exc):
         if self.original_branch:
@@ -56,19 +57,19 @@ class DatasetStageItem:
 class Repository:
     dvc_remote: Optional[str]
     repo_url: Optional[str]
-    commit: Optional[str]
+    commit_id: Optional[str]
     dataset_stage: List[DatasetStageItem]
 
     def __init__(
         self, repo_url: str = None, dvc_remote: str = None, cache_local_repository=False,
-        cache_root=None, commit=None
+        cache_root=None, commit_id=None
     ):
         """
         Initialize repository.
 
         Clones git repository if it's not in the cache.
 
-        If `commit` is specified, the given commit ID will be checked out temporarily for most commands and the
+        If `commit_id` is specified, the given commit ID will be checked out temporarily for most commands and the
         repository will be read-only.
         """
         if dvc_remote is None:
@@ -83,7 +84,7 @@ class Repository:
         self.repo_dir = Path(self.git_repo.working_dir)
         self.dvc_repo = dvc.repo.Repo(self.repo_dir)
         self.dataset_stage = []
-        self.commit = commit
+        self.commit_id = commit_id
         self.lock = fasteners.InterProcessLock(self.repo_dir / '.dvc-pandas.lock')
 
     def load_dataset(self, identifier: str, skip_pull_if_exists=False, lock=True) -> Dataset:
@@ -94,7 +95,7 @@ class Repository:
         regardless of the content.
         """
         with OptionalLock(self.lock, lock):
-            with TemporaryGitCheckout(self.git_repo, self.commit):
+            with TemporaryGitCheckout(self.git_repo, self.commit_id):
                 parquet_path = self.repo_dir / (identifier + '.parquet')
                 if not (parquet_path.exists() and skip_pull_if_exists):
                     logger.debug(f"Pull dataset {parquet_path} from DVC")
@@ -129,7 +130,7 @@ class Repository:
         Check if a dataset with the given identifier exists.
         """
         with OptionalLock(self.lock, lock):
-            with TemporaryGitCheckout(self.git_repo, self.commit):
+            with TemporaryGitCheckout(self.git_repo, self.commit_id):
                 dvc_file_path = self.repo_dir / (identifier + '.parquet.dvc')
                 return os.path.exists(dvc_file_path)
 
@@ -235,7 +236,7 @@ class Repository:
 
     @property
     def read_only(self):
-        return self.commit is not None
+        return self.commit_id is not None
 
     def _need_commit(self, lock=True) -> bool:
         with OptionalLock(self.lock, lock):
