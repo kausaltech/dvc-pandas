@@ -45,12 +45,28 @@ class Dataset:
                 for column in df.columns
             })
         else:
+            if not metadata or 'units' not in metadata:
+                units = self._determine_pint_units(df)
             self.df = df.copy()
 
         self.identifier = identifier
         self.units = units
         self.metadata = metadata
         self.modified_at = modified_at
+
+    def _determine_pint_units(self, df: pd.DataFrame) -> Optional[dict[str, str]]:
+        """Determine units from pint DataFrames."""
+
+        if not hasattr(df, 'pint'):
+            return None
+        units = {}
+        for col in df.columns:
+            if not hasattr(df[col], 'pint'):
+                continue
+            units[col] = str(df[col].pint.units)
+        if not units:
+            return None
+        return units
 
     def copy(self):
         return Dataset(self.df, self.identifier, units=self.units, metadata=self.metadata)
@@ -70,6 +86,15 @@ class Dataset:
         if self.units is not None:
             metadata['units'] = self.units
         return metadata
+
+    def to_parquet(self, path: str):
+        df = self.df.copy()
+        # Strip units from pint dataframes before serialization.
+        for col in df.columns:
+            if not hasattr(df[col], 'pint'):
+                continue
+            df[col] = df[col].pint.m
+        df.to_parquet(path)
 
     def equals(self, other: pd.DataFrame) -> bool:
         compare_attrs = ('identifier', 'units', 'metadata')

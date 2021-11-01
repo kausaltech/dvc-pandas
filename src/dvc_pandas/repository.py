@@ -190,7 +190,7 @@ class Repository:
 
             parquet_path = self.repo_dir / (dataset.identifier + '.parquet')
             os.makedirs(parquet_path.parent, exist_ok=True)
-            dataset.df.to_parquet(str(parquet_path))
+            dataset.to_parquet(str(parquet_path))
             self.dataset_stage.append(DatasetStageItem(dataset))
 
     def push(self, lock=True):
