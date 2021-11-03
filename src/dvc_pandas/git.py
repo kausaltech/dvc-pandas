@@ -6,6 +6,7 @@ from appdirs import user_cache_dir
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+GitRepo = git.Repo
 
 DEFAULT_CACHE_ROOT = user_cache_dir('dvc-pandas', 'kausaltech')
 PUSH_SUCCEEDED_FLAGS = git.remote.PushInfo.FAST_FORWARD | git.remote.PushInfo.NEW_HEAD
@@ -41,7 +42,7 @@ def local_cache_dir(location=None, cache_local_repository=False, cache_root=None
     return cache_dir_for_url(location, cache_root)
 
 
-def get_cache_repo(location=None, cache_local_repository=False, cache_root=None) -> git.Repo:
+def get_cache_repo(location=None, cache_local_repository=False, cache_root=None) -> GitRepo:
     """
     Return git repository for the given location, which can either be a URL or a path to a local repository.
 
