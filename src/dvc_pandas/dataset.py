@@ -54,7 +54,7 @@ class Dataset:
         self.metadata = metadata
         self.modified_at = modified_at
 
-    def _determine_pint_units(self, df: pd.DataFrame) -> Optional[dict[str, str]]:
+    def _determine_pint_units(self, df: pd.DataFrame) -> Optional[Dict[str, str]]:
         """Determine units from pint DataFrames."""
 
         if not hasattr(df, 'pint'):
