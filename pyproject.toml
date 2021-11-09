@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-envlist = flake8, py36
+envlist = flake8, py37
 
 [testenv]
 deps =
