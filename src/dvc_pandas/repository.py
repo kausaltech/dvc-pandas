@@ -173,7 +173,6 @@ class Repository:
         """
         self.log_info("Pull from git remote")
         self.git_repo.remote().pull()
-        self.commit_id = str(self.git_repo.head.commit)
 
     @ensure_repo_lock
     def push_dataset(self, dataset: Dataset):
