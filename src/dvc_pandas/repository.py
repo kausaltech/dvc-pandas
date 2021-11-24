@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import git
+import gitdb
 import logging
 import os
 from datetime import datetime, timezone
@@ -32,7 +33,7 @@ class TemporaryGitCheckout:
             self.original_branch = self.repo.active_branch
             try:
                 self.repo.head.reference = self.repo.commit(self.commit_id)
-            except git.exc.BadName:
+            except (git.exc.BadName, gitdb.exc.BadObject, ValueError, IndexError):
                 logger.debug("Commit does not exist; pull and retry")
                 # Commit doesn't exist, try to pull and see what happens
                 self.repo.remote().pull()
