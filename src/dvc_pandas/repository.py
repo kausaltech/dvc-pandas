@@ -90,16 +90,12 @@ class Repository:
     lock: ReentrantLock
 
     def __init__(
-        self, repo_url: str = None, dvc_remote: str = None, cache_local_repository=False,
-        cache_root=None, commit_id=None
+        self, repo_url: str = None, dvc_remote: str = None, cache_local_repository=False, cache_root=None
     ):
         """
         Initialize repository.
 
         Clones git repository if it's not in the cache.
-
-        If `commit_id` is specified, the given commit ID will be checked out temporarily for most commands and the
-        repository will be read-only.
         """
         if dvc_remote is None:
             dvc_remote = os.environ.get('DVC_PANDAS_DVC_REMOTE')
@@ -113,7 +109,7 @@ class Repository:
         self.repo_dir = Path(self.git_repo.working_dir)
         self.dvc_repo = dvc.repo.Repo(self.repo_dir)
         self.dataset_stage = []
-        self.target_commit_id = commit_id
+        self.target_commit_id = None
         self._lock = fasteners.InterProcessLock(self.repo_dir / '.dvc-pandas.lock')
         self.lock = ReentrantLock(self._lock)
 
@@ -284,6 +280,15 @@ class Repository:
     def commit_id(self):
         """Git commit ID that this object will operate on"""
         return self.target_commit_id or self.git_repo.head.commit.hexsha
+
+    def set_target_commit(self, commit_id):
+        """
+        Set commit ID that this object will operate on.
+
+        If `commit_id` is not None, the given commit ID will be checked out temporarily for most commands and the
+        repository will be read-only. Set it to None to use the latest commit.
+        """
+        self.target_commit_id = commit_id
 
 
 # FIXME: Make common base class instead of extending Repository
