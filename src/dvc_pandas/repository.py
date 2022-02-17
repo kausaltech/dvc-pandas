@@ -83,7 +83,7 @@ class DatasetStageItem:
 class Repository:
     dvc_remote: Optional[str]
     repo_url: Optional[str]
-    commit_id: Optional[str]
+    target_commit_id: Optional[str]
     dataset_stage: List[DatasetStageItem]
     git_repo: GitRepo
     dvc_repo: dvc.repo.Repo
@@ -113,7 +113,7 @@ class Repository:
         self.repo_dir = Path(self.git_repo.working_dir)
         self.dvc_repo = dvc.repo.Repo(self.repo_dir)
         self.dataset_stage = []
-        self.commit_id = commit_id
+        self.target_commit_id = commit_id
         self._lock = fasteners.InterProcessLock(self.repo_dir / '.dvc-pandas.lock')
         self.lock = ReentrantLock(self._lock)
 
@@ -128,7 +128,7 @@ class Repository:
         If `skip_pull_if_exists` is True, does not update the dataset if a parquet file exists for the identifier,
         regardless of the content.
         """
-        with TemporaryGitCheckout(self.git_repo, self.commit_id):
+        with TemporaryGitCheckout(self.git_repo, self.target_commit_id):
             parquet_path = self.repo_dir / (identifier + '.parquet')
             if not (parquet_path.exists() and skip_pull_if_exists):
                 self.log_info(f"Pull dataset {parquet_path} from DVC")
@@ -163,7 +163,7 @@ class Repository:
         """
         Check if a dataset with the given identifier exists.
         """
-        with TemporaryGitCheckout(self.git_repo, self.commit_id):
+        with TemporaryGitCheckout(self.git_repo, self.target_commit_id):
             dvc_file_path = self.repo_dir / (identifier + '.parquet.dvc')
             return os.path.exists(dvc_file_path)
 
@@ -269,7 +269,7 @@ class Repository:
 
     @property
     def read_only(self):
-        return self.commit_id is not None
+        return self.target_commit_id is not None
 
     @ensure_repo_lock
     def _need_commit(self) -> bool:
@@ -279,6 +279,11 @@ class Repository:
         # .gitignore even though no file has changed.
         diffs = self.git_repo.index.diff(self.git_repo.head.commit)
         return any(os.path.basename(diff.a_path) != '.gitignore' for diff in diffs)
+
+    @property
+    def commit_id(self):
+        """Git commit ID that this object will operate on"""
+        return self.target_commit_id or self.git_repo.head.commit.hexsha
 
 
 # FIXME: Make common base class instead of extending Repository
