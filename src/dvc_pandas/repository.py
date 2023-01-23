@@ -127,8 +127,8 @@ class Repository:
         with TemporaryGitCheckout(self.git_repo, self.target_commit_id):
             parquet_path = self.repo_dir / (identifier + '.parquet')
             if not (parquet_path.exists() and skip_pull_if_exists):
-                self.log_info(f"Pull dataset {parquet_path} from DVC")
-                self.dvc_repo.pull(str(parquet_path))
+                self.log_info(f"Pull dataset {parquet_path} from DVC using remote {self.dvc_remote}")
+                self.dvc_repo.pull(str(parquet_path), remote=self.dvc_remote)
             df = pd.read_parquet(parquet_path)
 
             # Get metadata (including units) from .dvc file
