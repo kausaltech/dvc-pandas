@@ -1,13 +1,7 @@
 from datetime import datetime
 from typing import Dict, Optional
 import pandas as pd
-from pint_pandas import PintArray
-
-
-def _quantify_series(series, unit):
-    if unit:
-        return PintArray(series, unit)
-    return series
+from pint_pandas import PintType
 
 
 class Dataset:
@@ -40,10 +34,10 @@ class Dataset:
                     raise ValueError(f"Unit specified for unknown column name '{column}'.")
 
         if units:
-            self.df = pd.DataFrame({
-                column: _quantify_series(df[column], units.get(column))
-                for column in df.columns
-            })
+            df = df.copy()
+            for col, unit in units.items():
+                df[col] = df[col].astype(PintType(unit))
+            self.df = df
         else:
             if not metadata or 'units' not in metadata:
                 units = self._determine_pint_units(df)
