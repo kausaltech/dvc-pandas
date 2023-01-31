@@ -23,14 +23,18 @@ logger = logging.getLogger(__name__)
 
 
 class TemporaryGitCheckout:
-    def __init__(self, repo, commit_id=None):
+    def __init__(self, repo: GitRepo, commit_id: str | None = None):
         self.repo = repo
         self.commit_id = commit_id
         self.original_branch = None
 
     def __enter__(self):
         if self.commit_id:
-            self.original_branch = self.repo.active_branch
+            try:
+                self.original_branch = self.repo.active_branch
+            except TypeError:
+                self.original_branch = None
+
             try:
                 self.repo.head.reference = self.repo.commit(self.commit_id)
             except (git.exc.BadName, gitdb.exc.BadObject, ValueError, IndexError):
@@ -82,7 +86,7 @@ class DatasetStageItem:
 
 class Repository:
     dvc_remote: Optional[str]
-    repo_url: Optional[str]
+    repo_url: str
     target_commit_id: Optional[str]
     dataset_stage: List[DatasetStageItem]
     git_repo: GitRepo
@@ -90,7 +94,7 @@ class Repository:
     lock: ReentrantLock
 
     def __init__(
-        self, repo_url: str = None, dvc_remote: str = None, cache_local_repository=False, cache_root=None
+        self, repo_url: str, dvc_remote: str | None = None, cache_local_repository=False, cache_root=None
     ):
         """
         Initialize repository.
@@ -169,7 +173,16 @@ class Repository:
         Make sure the git repository is pulled to the latest version.
         """
         self.log_info("Pull from git remote")
-        self.git_repo.remote().pull()
+        origin = self.git_repo.remote()
+        origin.fetch()
+        for remote_ref in origin.refs:
+            if remote_ref.remote_head in ('master', 'main'):
+                break
+        else:
+            raise KeyError("No 'master' or 'main' branch found for origin")
+        ref: git.Head = getattr(self.git_repo.heads, remote_ref.remote_head)
+        ref.set_commit(remote_ref.commit)
+        ref.checkout()
 
     @ensure_repo_lock
     def push_dataset(self, dataset: Dataset):
@@ -281,7 +294,7 @@ class Repository:
         """Git commit ID that this object will operate on"""
         return self.target_commit_id or self.git_repo.head.commit.hexsha
 
-    def set_target_commit(self, commit_id):
+    def set_target_commit(self, commit_id: str | None):
         """
         Set commit ID that this object will operate on.
 

@@ -57,7 +57,7 @@ def get_cache_repo(location=None, cache_local_repository=False, cache_root=None)
     return repo
 
 
-def push(repo):
+def push(repo: GitRepo):
     """Push to remote; raise an exception if it failed."""
     result, = repo.remote().push()
     # We don't accept any flags except those in PUSH_SUCCEEDED_FLAGS, and there should be at least one of them
