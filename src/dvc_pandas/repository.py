@@ -133,19 +133,38 @@ class Repository:
         If `skip_pull_if_exists` is True, does not update the dataset if a parquet file exists for the identifier,
         regardless of the content.
         """
+        def should_pull(parquet_path: Path, metadata: dict):
+            if not skip_pull_if_exists:
+                return True
+            if not parquet_path.exists():
+                return True
+            m = metadata['outs'][0]
+            if parquet_path.stat().st_size != m['size']:
+                self.log_info(f"Size mismatch with {parquet_path}")
+                return True
+            with open(parquet_path, 'rb') as f:
+                h = md5(f.read()).hexdigest()
+                if h != m['md5']:
+                    self.log_info(f"MD5 hash mismatch with {parquet_path}")
+                    return True
+            return False
+
         with TemporaryGitCheckout(self.git_repo, self.target_commit_id):
             parquet_path = self.repo_dir / (identifier + '.parquet')
-            if not (parquet_path.exists() and skip_pull_if_exists):
-                self.log_info(f"Pull dataset {parquet_path} from DVC using remote {self.dvc_remote}")
-                self.dvc_repo.pull(str(parquet_path), remote=self.dvc_remote)
-            df = pd.read_parquet(parquet_path)
 
             # Get metadata (including units) from .dvc file
             dvc_file_path = parquet_path.parent / (parquet_path.name + '.dvc')
             yaml = YAML()
             with open(dvc_file_path, 'rt') as file:
-                metadata = yaml.load(file).get('meta')
+                dvc_data = yaml.load(file)
 
+            if should_pull(parquet_path, dvc_data):
+                self.log_info(f"Pull dataset {parquet_path} from DVC using remote {self.dvc_remote}")
+                self.dvc_repo.pull(str(parquet_path), remote=self.dvc_remote)
+
+            df = pd.read_parquet(parquet_path)
+
+            metadata = dvc_data.get('meta')
             if metadata is None:
                 units = None
             else:
