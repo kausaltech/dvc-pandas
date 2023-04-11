@@ -1,4 +1,6 @@
 from __future__ import annotations
+from contextlib import contextmanager
+from hashlib import md5
 
 import git
 import gitdb
@@ -52,27 +54,30 @@ class TemporaryGitCheckout:
 
 class ReentrantLock:
     """Lock that keeps track of invocations."""
+    process_lock: fasteners.InterProcessLock
+    thread_lock: fasteners.ReaderWriterLock
 
-    def __init__(self, lock):
-        self.lock = lock
+    def __init__(self, lock_file: str):
+        self.process_lock = fasteners.InterProcessLock(lock_file)
+        self.thread_lock = fasteners.ReaderWriterLock()
         self.acquisition_count = 0
 
-    def __enter__(self):
-        if not self.acquisition_count:
-            self.lock.acquire()
-        self.acquisition_count += 1
-
-    def __exit__(self, *exc):
-        assert self.acquisition_count >= 1
-        self.acquisition_count -= 1
-        if not self.acquisition_count:
-            self.lock.release()
-
+    @contextmanager
+    def lock(self):
+        with self.thread_lock.write_lock():
+            if not self.acquisition_count:
+                self.process_lock.acquire()
+            self.acquisition_count += 1
+            yield
+            assert self.acquisition_count >= 1
+            self.acquisition_count -= 1
+            if not self.acquisition_count:
+                self.process_lock.release()
 
 def ensure_repo_lock(func):
     """Wrap a Repository class method with a lock."""
     def acquire_lock(self: Repository, *args, **kwargs):
-        with self.lock:
+        with self.lock.lock():
             return func(self, *args, **kwargs)
 
     return acquire_lock
@@ -94,7 +99,8 @@ class Repository:
     lock: ReentrantLock
 
     def __init__(
-        self, repo_url: str, dvc_remote: str | None = None, cache_local_repository=False, cache_root=None
+        self, repo_url: str, dvc_remote: str | None = None, cache_prefix: str | None = None,
+        cache_local_repository: bool = False, cache_root: str | None = None
     ):
         """
         Initialize repository.
@@ -108,14 +114,13 @@ class Repository:
         self.dvc_remote = dvc_remote
         self.cache_local_repository = cache_local_repository
         self.git_repo = get_cache_repo(
-            repo_url, cache_local_repository=cache_local_repository, cache_root=cache_root
+            repo_url, prefix=cache_prefix, cache_local_repository=cache_local_repository, cache_root=cache_root
         )
         self.repo_dir = Path(self.git_repo.working_dir)
-        self.dvc_repo = dvc.repo.Repo(self.repo_dir)
+        self.dvc_repo = dvc.repo.Repo(str(self.repo_dir))
         self.dataset_stage = []
         self.target_commit_id = None
-        self._lock = fasteners.InterProcessLock(self.repo_dir / '.dvc-pandas.lock')
-        self.lock = ReentrantLock(self._lock)
+        self.lock = ReentrantLock(str(self.repo_dir / '.dvc-pandas.lock'))
 
     def log_info(self, message: str):
         logger.info('[%s] %s' % (self.repo_url, message))
