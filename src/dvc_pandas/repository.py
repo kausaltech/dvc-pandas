@@ -8,9 +8,9 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-import fasteners
+import filelock
 import pandas as pd
 from ruamel.yaml import YAML
 
@@ -54,30 +54,16 @@ class TemporaryGitCheckout:
 
 class ReentrantLock:
     """Lock that keeps track of invocations."""
-    process_lock: fasteners.InterProcessLock
-    thread_lock: fasteners.ReaderWriterLock
+    _lock: filelock.FileLock
 
     def __init__(self, lock_file: str):
-        self.process_lock = fasteners.InterProcessLock(lock_file)
-        self.thread_lock = fasteners.ReaderWriterLock()
-        self.acquisition_count = 0
+        self.lock = filelock.FileLock(lock_file, thread_local=True)
 
-    @contextmanager
-    def lock(self):
-        with self.thread_lock.write_lock():
-            if not self.acquisition_count:
-                self.process_lock.acquire()
-            self.acquisition_count += 1
-            yield
-            assert self.acquisition_count >= 1
-            self.acquisition_count -= 1
-            if not self.acquisition_count:
-                self.process_lock.release()
 
 def ensure_repo_lock(func):
     """Wrap a Repository class method with a lock."""
     def acquire_lock(self: Repository, *args, **kwargs):
-        with self.lock.lock():
+        with self.lock.lock.acquire():
             return func(self, *args, **kwargs)
 
     return acquire_lock
@@ -124,6 +110,12 @@ class Repository:
 
     def log_info(self, message: str):
         logger.info('[%s] %s' % (self.repo_url, message))
+
+    def acquire_lock(self):
+        self.lock.lock.acquire()
+
+    def release_lock(self):
+        self.lock.lock.release()
 
     @ensure_repo_lock
     def load_dataset(self, identifier: str, skip_pull_if_exists=False) -> Dataset:
