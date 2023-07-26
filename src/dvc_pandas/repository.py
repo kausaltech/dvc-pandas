@@ -31,21 +31,25 @@ class TemporaryGitCheckout:
         self.original_branch = None
 
     def __enter__(self):
-        if self.commit_id:
-            try:
-                self.original_branch = self.repo.active_branch
-            except TypeError:
-                self.original_branch = None
+        if not self.commit_id:
+            return
 
-            try:
-                self.repo.head.reference = self.repo.commit(self.commit_id)
-            except (git.exc.BadName, gitdb.exc.BadObject, ValueError, IndexError):
-                logger.debug("Commit does not exist; pull and retry")
-                # Commit doesn't exist, try to pull and see what happens
-                self.repo.remote().pull()
-                self.repo.head.reference = self.repo.commit(self.commit_id)
-            self.repo.head.reset(index=True, working_tree=True)
-            # TODO: Pull if commit ID doesn't exist? Flag for enabling this beha
+        if self.repo.head.commit.hexsha == self.commit_id:
+            return
+
+        try:
+            self.original_branch = self.repo.active_branch
+        except TypeError:
+            self.original_branch = None
+
+        try:
+            self.repo.head.reference = self.repo.commit(self.commit_id)
+        except (git.exc.BadName, gitdb.exc.BadObject, ValueError, IndexError):
+            logger.debug("Commit does not exist; pull and retry")
+            # Commit doesn't exist, try to pull and see what happens
+            self.repo.remote().pull()
+            self.repo.head.reference = self.repo.commit(self.commit_id)
+        self.repo.head.reset(index=True, working_tree=True)
 
     def __exit__(self, *exc):
         if self.original_branch:
@@ -73,6 +77,9 @@ class DatasetStageItem:
     def __init__(self, dataset):
         self.identifier = dataset.identifier
         self.metadata = dataset.dvc_metadata
+
+
+dataset_hash_cache: dict[str, Tuple[int, str]] = {}
 
 
 class Repository:
@@ -130,15 +137,25 @@ class Repository:
                 return True
             if not parquet_path.exists():
                 return True
+            st = parquet_path.stat()
+            mtime = st.st_mtime_ns
             m = metadata['outs'][0]
-            if parquet_path.stat().st_size != m['size']:
+            if st.st_size != m['size']:
                 self.log_info(f"Size mismatch with {parquet_path}")
                 return True
-            with open(parquet_path, 'rb') as f:
-                h = md5(f.read()).hexdigest()
-                if h != m['md5']:
-                    self.log_info(f"MD5 hash mismatch with {parquet_path}")
-                    return True
+
+            cached = dataset_hash_cache.get(str(parquet_path))
+            if cached is not None and cached[0] == mtime:
+                dataset_hash = cached[1]
+            else:
+                with open(parquet_path, 'rb') as f:
+                    dataset_hash = md5(f.read()).hexdigest()
+                dataset_hash_cache[str(parquet_path)] = (mtime, dataset_hash)
+
+            if dataset_hash != m['md5']:
+                self.log_info(f"MD5 hash mismatch with {parquet_path}")
+                return True
+
             return False
 
         with TemporaryGitCheckout(self.git_repo, self.target_commit_id):
