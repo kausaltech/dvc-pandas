@@ -213,9 +213,14 @@ class Repository:
                 break
         else:
             raise KeyError("No 'master' or 'main' branch found for origin")
-        ref: git.Head = getattr(self.git_repo.heads, remote_ref.remote_head)
-        ref.set_commit(remote_ref.commit)
-        ref.checkout()
+
+        if self.git_repo.head.commit == remote_ref.commit:
+            self.log_info("Already up-to-date")
+            return
+
+        if not self.git_repo.is_ancestor(self.git_repo.head.commit, remote_ref.commit):
+            raise Exception("Current HEAD is not an ancestor of origin/%s" % (remote_ref.remote_head))
+        self.git_repo.head.reset(remote_ref, index=True, working_tree=True)
 
     @ensure_repo_lock
     def push_dataset(self, dataset: Dataset):
@@ -234,18 +239,22 @@ class Repository:
             raise ValueError("push_dataset was called while repository is read-only.")
 
         self.pull_datasets()
+
+        prev_head = self.git_repo.head.commit
+
         parquet_path = self.repo_dir / (dataset.identifier + '.parquet')
         self.add(dataset)
         try:
             self.push()
         except Exception:
             # Restore original data
-            # git reset --hard origin/master
-            logger.debug("Hard-reset master branch to origin/master")
-            self.git_repo.head.reset('origin/master', index=True, working_tree=True)
+            self.git_repo.head.reset(prev_head, index=True, working_tree=True)
 
-            logger.debug(f"Checkout {parquet_path} from DVC")
-            self.dvc_repo.checkout(str(parquet_path), force=True)
+            tree = self.git_repo.head.commit.tree
+            dvc_file = dataset.identifier + '.parquet.dvc'
+            if dvc_file in tree:
+                logger.debug(f"Checkout {parquet_path} from DVC")
+                self.dvc_repo.checkout(str(parquet_path), force=True)
 
             # Remove rolled back stuff that may be left on the remote
             # self.dvc_repo.gc(all_commits=True, cloud=True, remote=self.dvc_remote)
@@ -273,7 +282,6 @@ class Repository:
         """Upload, commit and push the staged files and clear the stage."""
         if self.read_only:
             raise ValueError("add was called while repository is read-only.")
-
         for stage_item in self.dataset_stage:
             path = self.repo_dir / (stage_item.identifier + '.parquet')
 
@@ -301,7 +309,12 @@ class Repository:
             identifiers = [stage_item.identifier for stage_item in self.dataset_stage]
             commit_message = f"Update {', '.join(identifiers)}"
             logger.debug(f"Create commit: {commit_message}")
-            self.git_repo.index.commit(commit_message)
+            commit = self.git_repo.index.commit(commit_message)
+            assert len(commit.parents) == 1
+            diff_index = commit.parents[0].diff(commit)
+            for diff in diff_index:
+                if diff.change_type not in ('A', 'M'):
+                    raise Exception("Invalid changes in the git commit (only additions and modifications allowed)")
             logger.debug("Push to git repository")
             git_push(self.git_repo)
         else:
