@@ -124,41 +124,35 @@ class Repository:
     def release_lock(self):
         self.lock.lock.release()
 
-    @ensure_repo_lock
-    def load_dataset(self, identifier: str, skip_pull_if_exists=False) -> Dataset:
-        """
-        Load dataset with the given identifier from the given repository.
+    def _should_pull(self, parquet_path: Path, metadata: dict):
+        if not parquet_path.exists():
+            return True
+        st = parquet_path.stat()
+        mtime = st.st_mtime_ns
+        m = metadata['outs'][0]
+        if st.st_size != m['size']:
+            self.log_info(f"Size mismatch with {parquet_path}")
+            return True
 
-        If `skip_pull_if_exists` is True, does not update the dataset if a parquet file exists for the identifier,
-        regardless of the content.
-        """
-        def should_pull(parquet_path: Path, metadata: dict):
-            if not skip_pull_if_exists:
-                return True
-            if not parquet_path.exists():
-                return True
-            st = parquet_path.stat()
-            mtime = st.st_mtime_ns
-            m = metadata['outs'][0]
-            if st.st_size != m['size']:
-                self.log_info(f"Size mismatch with {parquet_path}")
-                return True
+        cached = dataset_hash_cache.get(str(parquet_path))
+        if cached is not None and cached[0] == mtime:
+            dataset_hash = cached[1]
+        else:
+            with open(parquet_path, 'rb') as f:
+                dataset_hash = md5(f.read()).hexdigest()
+            dataset_hash_cache[str(parquet_path)] = (mtime, dataset_hash)
 
-            cached = dataset_hash_cache.get(str(parquet_path))
-            if cached is not None and cached[0] == mtime:
-                dataset_hash = cached[1]
-            else:
-                with open(parquet_path, 'rb') as f:
-                    dataset_hash = md5(f.read()).hexdigest()
-                dataset_hash_cache[str(parquet_path)] = (mtime, dataset_hash)
+        if dataset_hash != m['md5']:
+            self.log_info(f"MD5 hash mismatch with {parquet_path}")
+            return True
 
-            if dataset_hash != m['md5']:
-                self.log_info(f"MD5 hash mismatch with {parquet_path}")
-                return True
+        return False
 
-            return False
-
-        with TemporaryGitCheckout(self.git_repo, self.target_commit_id):
+    def _load_datasets(self, identifiers: list[str]) -> list[Dataset]:
+        datasets_to_pull = []
+        dataset_metadata = {}
+        dataset_paths: dict[str, dict[str, Path]] = {}
+        for identifier in identifiers:
             parquet_path = self.repo_dir / (identifier + '.parquet')
 
             # Get metadata (including units) from .dvc file
@@ -167,22 +161,57 @@ class Repository:
             with open(dvc_file_path, 'rt') as file:
                 dvc_data = yaml.load(file)
 
-            if should_pull(parquet_path, dvc_data):
+            if self._should_pull(parquet_path, dvc_data):
                 self.log_info(f"Pull dataset {parquet_path} from DVC using remote {self.dvc_remote}")
-                self.dvc_repo.pull(str(parquet_path), remote=self.dvc_remote, force=True)
+                datasets_to_pull.append(str(parquet_path))
+            dataset_metadata[identifier] = dvc_data
+            dataset_paths[identifier] = dict(dvc=dvc_file_path, parquet=parquet_path)
 
-            df = pd.read_parquet(parquet_path)
+        if datasets_to_pull:
+            self.dvc_repo.pull(datasets_to_pull, remote=self.dvc_remote, force=True)
 
+        datasets = []
+        for identifier in identifiers:
+            paths = dataset_paths[identifier]
+            df = pd.read_parquet(paths['parquet'])
+            dvc_data = dataset_metadata[identifier]
             metadata = dvc_data.get('meta')
             if metadata is None:
                 units = None
             else:
                 units = metadata.pop('units', None)
 
-            mtime = dvc_file_path.stat().st_mtime
+            mtime = paths['dvc'].stat().st_mtime
             modified_at = datetime.fromtimestamp(mtime, tz=timezone.utc)
 
-            return Dataset(df, identifier, modified_at=modified_at, units=units, metadata=metadata)
+            datasets.append(Dataset(df, identifier, modified_at=modified_at, units=units, metadata=metadata))
+        return datasets
+
+    @ensure_repo_lock
+    def load_dataset(self, identifier: str, skip_pull_if_exists=False) -> Dataset:
+        """
+        Load dataset with the given identifier from the given repository.
+
+        If `skip_pull_if_exists` is True, does not update the dataset if a parquet file exists for the identifier,
+        regardless of the content.
+        """
+
+        with TemporaryGitCheckout(self.git_repo, self.target_commit_id):
+            dss = self._load_datasets([identifier])
+            return dss[0]
+
+    @ensure_repo_lock
+    def load_datasets(self, identifiers: list[str]) -> list[Dataset]:
+        """
+        Load dataset with the given identifier from the given repository.
+
+        If `skip_pull_if_exists` is True, does not update the dataset if a parquet file exists for the identifier,
+        regardless of the content.
+        """
+
+        with TemporaryGitCheckout(self.git_repo, self.target_commit_id):
+            dss = self._load_datasets(identifiers)
+            return dss
 
     def load_dataframe(self, identifier: str, skip_pull_if_exists=False) -> pd.DataFrame:
         """
