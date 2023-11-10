@@ -321,7 +321,7 @@ class Repository:
                 self.dvc_repo.remove(str(dvc_file_path))
 
             logger.debug(f"Add file {path} to DVC")
-            self.dvc_repo.add(str(path), force=True)
+            self.dvc_repo.add(str(path), force=True, remote=self.dvc_remote)
 
             logger.debug(f"Set metadata to {stage_item.metadata}")
             set_dvc_file_metadata(dvc_file_path, stage_item.metadata)
