@@ -1,9 +1,7 @@
 from __future__ import annotations
-from contextlib import contextmanager
 from hashlib import md5
 
 import git
-import gitdb
 import logging
 import os
 from datetime import datetime, timezone
@@ -11,12 +9,12 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import filelock
-import pandas as pd
 from ruamel.yaml import YAML
 
 import dvc.repo
+import dvc.api
 
-from .dataset import Dataset
+from .dataset import Dataset, DatasetMeta
 from .dvc import set_dvc_file_metadata
 from .git import get_cache_repo, GitRepo
 from .git import push as git_push
@@ -43,12 +41,12 @@ class TemporaryGitCheckout:
             self.original_branch = None
 
         try:
-            self.repo.head.reference = self.repo.commit(self.commit_id)
-        except (git.exc.BadName, gitdb.exc.BadObject, ValueError, IndexError):
+            self.repo.head.set_reference(self.repo.commit(self.commit_id))
+        except (git.BadName, git.BadObject, ValueError, IndexError):
             logger.debug("Commit does not exist; pull and retry")
             # Commit doesn't exist, try to pull and see what happens
             self.repo.remote().pull()
-            self.repo.head.reference = self.repo.commit(self.commit_id)
+            self.repo.head.set_reference(self.repo.commit(self.commit_id))
         self.repo.head.reset(index=True, working_tree=True)
 
     def __exit__(self, *exc):
@@ -173,18 +171,26 @@ class Repository:
         datasets = []
         for identifier in identifiers:
             paths = dataset_paths[identifier]
-            df = pd.read_parquet(paths['parquet'])
-            dvc_data = dataset_metadata[identifier]
-            metadata = dvc_data.get('meta')
-            if metadata is None:
-                units = None
-            else:
-                units = metadata.pop('units', None)
 
             mtime = paths['dvc'].stat().st_mtime
             modified_at = datetime.fromtimestamp(mtime, tz=timezone.utc)
 
-            datasets.append(Dataset(df, identifier, modified_at=modified_at, units=units, metadata=metadata))
+            dvc_data = dataset_metadata[identifier]
+            hash = dvc_data['outs'][0]['md5']
+            metadata = dvc_data.get('meta')
+            if metadata is None:
+                units = None
+                index_columns = None
+            else:
+                units = metadata.pop('units', None)
+                index_columns = metadata.pop('index_columns', None)
+
+            ds_meta = DatasetMeta(
+                identifier=identifier, modified_at=modified_at, units=units,
+                index_columns=index_columns, metadata=metadata, hash=hash,
+            )
+            ds = Dataset.from_parquet(paths['parquet'], meta=ds_meta)
+            datasets.append(ds)
         return datasets
 
     @ensure_repo_lock

@@ -1,20 +1,77 @@
+from __future__ import annotations
+
+from copy import deepcopy
+import dataclasses
 from datetime import datetime
-from typing import Dict, Optional
-import pandas as pd
-from pint_pandas import PintType
+import json
+from pathlib import Path
+from typing import cast
+
+import polars as pl
+from pyarrow.parquet import core as pq
+import pyarrow as pa
+
+
+@dataclasses.dataclass
+class DatasetMeta:
+    identifier: str
+    modified_at: datetime | None = None
+    units: dict[str, str] | None = None
+    index_columns: list[str] | None = None
+    metadata: dict | None = None
+    hash: str | None = None
 
 
 class Dataset:
-    df: pd.DataFrame
     identifier: str
-    modified_at: Optional[datetime]
-    units: Optional[Dict[str, str]]
-    metadata: Optional[Dict]
+    modified_at: datetime | None
+    units: dict[str, str] | None
+    index_columns: list[str] | None
+    hash: str | None
 
-    def __init__(
-        self, df: pd.DataFrame, identifier: str, modified_at: datetime = None, units: Dict[str, str] = None,
-        metadata: Dict = None
-    ):
+    df: pl.DataFrame | None
+
+    @classmethod
+    def read_parquet_schema(cls, path: Path) -> pa.Schema:
+        return pq.read_schema(str(path))
+
+    @classmethod
+    def update_meta_from_parquet(cls, schema: pa.Schema, meta: DatasetMeta) -> DatasetMeta:
+        md = schema.metadata
+        if not md:
+            return meta
+
+        pdmeta = schema.pandas_metadata or {}
+        if meta.index_columns is None:
+            index_columns = pdmeta.get('index_columns')
+            if index_columns is not None:
+                meta = dataclasses.replace(meta, index_columns=index_columns)
+
+        if meta.units is None:
+            units = {}
+            cols = pdmeta.get('columns') or []
+            for col in cols:
+                col_md = col.get('metadata')
+                if not isinstance(col_md, dict):
+                    continue
+                if 'unit' in col_md:
+                    units[col['name']] = col_md['unit']
+            if units:
+                meta = dataclasses.replace(meta, units=units)
+
+        return meta
+
+    @classmethod
+    def from_parquet(cls, path: Path, meta: DatasetMeta):
+        schema = cls.read_parquet_schema(path)
+        meta = cls.update_meta_from_parquet(schema, meta)
+        try:
+            pldf = pl.read_parquet(path)
+        except Exception:
+            pldf = pl.read_parquet(path, use_pyarrow=True)
+        return cls(pldf, meta)
+
+    def __init__(self, df: pl.DataFrame | None, meta: DatasetMeta):
         """
         Create a dataset from a Pandas DataFrame, an identifier and optional metadata.
 
@@ -26,47 +83,37 @@ class Dataset:
         will be stored in the metadata using the key `units`, so the `metadata` dict is not allowed to contain this key
         and a ValueError will be raised if it does.
         """
+
+        metadata = meta.metadata
         if metadata and 'units' in metadata:
             raise ValueError("Dataset metadata may not contain the key 'units'.")
+        units = meta.units
         if units is not None:
-            for column in units.keys():
-                if column not in df.columns:
-                    raise ValueError(f"Unit specified for unknown column name '{column}'.")
+            if df is not None:
+                for column in units.keys():
+                    if column not in df.columns:
+                        raise ValueError(f"Unit specified for unknown column name '{column}'.")
 
-        if units:
-            df = df.copy()
-            for col, unit in units.items():
-                df[col] = df[col].astype(PintType(unit))
-            self.df = df
-        else:
-            if not metadata or 'units' not in metadata:
-                units = self._determine_pint_units(df)
-            self.df = df.copy()
-
-        self.identifier = identifier
-        self.units = units
-        self.metadata = metadata
-        self.modified_at = modified_at
-
-    def _determine_pint_units(self, df: pd.DataFrame) -> Optional[Dict[str, str]]:
-        """Determine units from pint DataFrames."""
-
-        if not hasattr(df, 'pint'):
-            return None
-        units = {}
-        for col in df.columns:
-            if not hasattr(df[col], 'pint'):
-                continue
-            units[col] = str(df[col].pint.units)
-        if not units:
-            return None
-        return units
-
-    def copy(self):
-        return Dataset(self.df, self.identifier, units=self.units, metadata=self.metadata)
+        self.identifier = meta.identifier
+        self.units = meta.units
+        self.index_columns = meta.index_columns
+        self.metadata = meta.metadata
+        self.modified_at = meta.modified_at
+        self.hash = meta.hash
+        self.df = df
 
     @property
-    def dvc_metadata(self) -> Optional[Dict]:
+    def meta(self) -> DatasetMeta:
+        return DatasetMeta(self.identifier, modified_at=self.modified_at, units=self.units, index_columns=self.index_columns, metadata=self.metadata, hash=self.hash)
+
+    def copy(self):
+        df = self.df
+        if df is not None:
+            df = df.clone()
+        return Dataset(df, meta=deepcopy(self.meta))
+
+    @property
+    def dvc_metadata(self) -> dict | None:
         """
         Return the metadata as it should be stored in the .dvc file.
 
@@ -81,18 +128,39 @@ class Dataset:
             metadata['units'] = self.units
         return metadata
 
-    def to_parquet(self, path: str):
-        df = self.df.copy()
-        # Strip units from pint dataframes before serialization.
-        for col in df.columns:
-            if not hasattr(df[col], 'pint'):
-                continue
-            df[col] = df[col].pint.m
-        df.to_parquet(path)
+    def _replace_table_metadata(self, table: pa.Table, pandas_md: dict) -> pa.Table:
+        assert table.schema.metadata is not None
+        new_md = deepcopy(table.schema.metadata)
+        new_md[b'pandas'] = json.dumps(pandas_md).encode('utf8')
+        new_md[b'dvc-pandas'] = json.dumps(self.metadata).encode('utf8') if self.metadata is not None else b'{}'
+        table = table.replace_schema_metadata(cast(dict[str | bytes, str | bytes], new_md))
+        return table
 
-    def equals(self, other: pd.DataFrame) -> bool:
-        compare_attrs = ('identifier', 'units', 'metadata')
-        return self.df.equals(other.df) and all(getattr(self, a) == getattr(other, a) for a in compare_attrs)
+    def to_parquet(self, path: Path):
+        assert self.df is not None
+
+        df = self.df.to_pandas()
+        if self.index_columns:
+            df = df.set_index(self.index_columns)
+
+        table = pa.Table.from_pandas(df)
+        pd_meta = table.schema.pandas_metadata
+        assert pd_meta is not None
+        if self.units:
+            for col_name, unit in self.units.items():
+                for pd_col in pd_meta['columns']:
+                    if pd_col['name'] == col_name:
+                        col_md = pd_col.get('metadata', None)
+                        if not isinstance(col_md, dict):
+                            col_md = {}
+                            pd_col['metadata'] = col_md
+                        col_md['unit'] = unit
+                        break
+                else:
+                    raise Exception('Column %s referred to in units was not found' % col_name)
+
+        table = self._replace_table_metadata(table, pd_meta)
+        pq.write_table(table, str(path), compression='snappy')
 
     def __str__(self):
         return self.identifier

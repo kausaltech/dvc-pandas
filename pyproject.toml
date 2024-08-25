@@ -1,23 +1,37 @@
-[build-system]
-requires = [
-    "setuptools>=42",
-    "wheel"
+[project]
+name = "dvc-pandas"
+version = "0.2.0"
+authors = [
+    {name = "Bernhard Bliem", email = "bernhard.bliem@kausal.tech"},
+    {name = "Juha Yrjölä", email = "juha.yrjola@kausal.tech"},
 ]
-build-backend = "setuptools.build_meta"
+description = "Wrapper for DVC and git to easily fetch Polars dataframes"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "gitpython>=3.1.43",
+    "appdirs>=1.4.4",
+    "dvc>=3.54.1",
+    "dvc-s3>=3.2.0",
+    "filelock>=3.15.4",
+    "pyarrow>=17.0.0",
+    "pandas>=2.2.2",
+    "polars>=1.5.0",
+    "pint-pandas>=0.6.2",
+    "python-snappy>=0.7.2",
+    "ruamel-yaml>=0.18.6",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python"
+]
 
+[project.urls]
+Repository = "https://github.com/kausaltech/dvc-pandas"
 
-[tool.tox]
-legacy_tox_ini = """
-[tox]
-envlist = flake8, py37
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[testenv]
-deps =
-    pytest
-    pytest-xdist
-commands = pytest
-
-[testenv:flake8]
-deps = flake8
-commands = flake8 src tests setup.py
-"""
+[tool.hatch.build.targets.wheel]
+packages = ["src/dvc_pandas"]
