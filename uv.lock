@@ -577,18 +577,18 @@ wheels = [
 
 [[package]]
 name = "dvc-pandas"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "appdirs" },
     { name = "dvc" },
     { name = "dvc-s3" },
     { name = "filelock" },
-    { name = "gitpython" },
     { name = "pandas" },
     { name = "pint-pandas" },
     { name = "polars" },
     { name = "pyarrow" },
+    { name = "pygit2" },
     { name = "python-snappy" },
     { name = "ruamel-yaml" },
 ]
@@ -599,13 +599,13 @@ requires-dist = [
     { name = "dvc", specifier = ">=3.54.1" },
     { name = "dvc-s3", specifier = ">=3.2.0" },
     { name = "filelock", specifier = ">=3.15.4" },
-    { name = "gitpython", specifier = ">=3.1.43" },
     { name = "pandas", specifier = ">=2.2.2" },
     { name = "pint-pandas", specifier = ">=0.6.2" },
     { name = "polars", specifier = ">=1.5.0" },
     { name = "pyarrow", specifier = ">=17.0.0" },
+    { name = "pygit2", specifier = ">=1.15.1" },
     { name = "python-snappy", specifier = ">=0.7.2" },
-    { name = "ruamel-yaml" },
+    { name = "ruamel-yaml", specifier = ">=0.18.6" },
 ]
 
 [[package]]
