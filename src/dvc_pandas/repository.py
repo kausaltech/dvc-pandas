@@ -393,7 +393,7 @@ class Repository:
         self.log_debug(f"Create commit: {commit_message}")
         ref = self.git_repo.head.name
         tree = index.write_tree()
-        diff_index = self.git_repo.diff(tree, self.git_repo.head.target)
+        diff_index = self.git_repo.diff(self.git_repo.head.target, tree)
         for delta in diff_index.deltas:
             if delta.status_char() not in ('A', 'M'):
                 raise Exception("Invalid changes in the git commit (only additions and modifications allowed)")
