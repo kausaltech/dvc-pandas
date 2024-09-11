@@ -193,22 +193,28 @@ class Repository:
         assert isinstance(commit, Commit)
         return commit
 
+    def _get_dvc_metadata(self, identifier: str, commit: Commit | None = None) -> dict:
+        if commit is None:
+            commit = self._get_git_commit()
+
+        base_path = Path(identifier)
+        meta_path = base_path.with_suffix('.parquet.dvc')
+
+        # Get metadata (including units) from .dvc file
+        git_tree = commit.tree
+        if str(meta_path) not in git_tree:
+            raise Exception("File %s not in git repo %s (commit id %s)" % (meta_path, self.repo_url, commit.id))
+        blob: Blob = cast(Blob, git_tree[str(meta_path)])
+        return yaml.load(blob.data, yaml.CSafeLoader)
+
     def _load_datasets(self, identifiers: list[str]) -> list[Dataset]:
         datasets_to_pull = set()
         commit = self._get_git_commit()
-        git_tree = commit.tree
 
         ds_file_meta: list[tuple[str, Path | None, dict]] = []
 
         for identifier in identifiers:
-            base_path = Path(identifier)
-            meta_path = base_path.with_suffix('.parquet.dvc')
-
-            # Get metadata (including units) from .dvc file
-            if str(meta_path) not in git_tree:
-                raise Exception("File %s not in git repo %s (commit id %s)" % (meta_path, self.repo_url, commit.id))
-            blob: Blob = cast(Blob, git_tree[str(meta_path)])
-            dvc_data = yaml.load(blob.data, yaml.CSafeLoader)
+            dvc_data = self._get_dvc_metadata(identifier, commit)
             parquet_path = self._get_from_dvc_cache(identifier, dvc_data)
             if parquet_path is None:
                 datasets_to_pull.add(identifier)
@@ -255,9 +261,6 @@ class Repository:
     def load_dataset(self, identifier: str) -> Dataset:
         """
         Load dataset with the given identifier from the given repository.
-
-        If `skip_pull_if_exists` is True, does not update the dataset if a parquet file exists for the identifier,
-        regardless of the content.
         """
 
         dss = self._load_datasets([identifier])
@@ -283,6 +286,11 @@ class Repository:
         if (identifier + '.parquet.dvc') in commit.tree:
             return True
         return False
+
+    def is_dataset_cached(self, identifier: str) -> bool:
+        """Check if a dataset with the given identifier can be loaded directly from the DVC cache directory."""
+        metadata = self._get_dvc_metadata(identifier)
+        return self._get_from_dvc_cache(identifier, metadata) is not None
 
     @ensure_repo_lock
     def pull_datasets(self) -> str | None:
