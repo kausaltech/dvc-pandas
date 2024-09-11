@@ -1,6 +1,6 @@
 [project]
 name = "dvc-pandas"
-version = "0.3.0"
+version = "0.3.1"
 authors = [
     {name = "Bernhard Bliem", email = "bernhard.bliem@kausal.tech"},
     {name = "Juha Yrjölä", email = "juha.yrjola@kausal.tech"},
@@ -35,3 +35,39 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dvc_pandas"]
+
+[tool.uv]
+dev-dependencies = [
+    "ruff>=0.6.4",
+    "uv>=0.4.9",
+    "mypy>=1.11.2",
+]
+
+[tool.mypy]
+check_untyped_defs = true
+cache_fine_grained = true
+
+[tool.ruff]
+line-length = 120
+exclude = [
+    ".venv",
+]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D203", "D212",
+    "D1", "CPY", "Q000", "ANN204", "ERA", "ANN201", "ANN0", "PGH003", "TD0", "FIX002", "DJ001", "S101",
+    "ARG001", "UP031", "G002", "BLE001", "SIM108", "SIM103", "SLF001", "C408", "RET504",
+    "TRY003", "EM101", "FIX001", "UP035", "ARG002", "ARG004", "RUF012", "FBT002", "PLR2004",
+    "FBT001", "TID252", "RSE102", "PIE790", "D202", "PLR1722", "SIM118", "SIM114",
+    "T201", "C401", "PD011", "RUF005", "PYI021", "PD901", "TRY002", "TRY400"
+]
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = true
+combine-as-imports = true
+required-imports = ["from __future__ import annotations"]
+extra-standard-library = ["typing_extensions"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
