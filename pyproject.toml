@@ -41,6 +41,7 @@ dev-dependencies = [
     "ruff>=0.6.4",
     "uv>=0.4.9",
     "mypy>=1.11.2",
+    "twine>=5.1.1",
 ]
 
 [tool.mypy]
