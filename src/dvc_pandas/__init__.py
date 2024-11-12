@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .dataset import Dataset, DatasetMeta
 from .repository import Repository, RepositoryCredentials
 

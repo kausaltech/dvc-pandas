@@ -6,17 +6,17 @@ import os
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta, timezone
+from functools import wraps
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, cast
+from typing import TYPE_CHECKING, Any, Callable, Concatenate, cast
 
+import dvc.api
+import dvc.repo
 import filelock
 import pygit2
 import yaml
 from pygit2 import Blob, Commit, GitError, Repository as GitRepo
 from pygit2.enums import CredentialType, RepositoryOpenFlag, ResetMode
-
-import dvc.api
-import dvc.repo
 
 from .dataset import Dataset, DatasetMeta
 from .dvc import set_dvc_file_metadata
@@ -34,15 +34,20 @@ logger = logging.getLogger(__name__)
 class ReentrantLock:
     """Lock that keeps track of invocations."""
 
-    _lock: filelock.FileLock
+    lock: filelock.BaseFileLock
 
     def __init__(self, lock_file: str):
         self.lock = filelock.FileLock(lock_file, thread_local=True)
 
 
-def ensure_repo_lock[R](func: Callable[..., R]) -> Callable[..., R]:
+type RepoFuncT[**P, R] = Callable[Concatenate[Repository, P], R]
+
+
+def ensure_repo_lock[**P, R](func: RepoFuncT[P, R]) -> RepoFuncT[P, R]:
     """Wrap a Repository class method with a lock."""
-    def acquire_lock(self: Repository, *args, **kwargs) -> R:
+
+    @wraps(func)
+    def acquire_lock(self: Repository, *args: P.args, **kwargs: P.kwargs) -> R:
         with self.lock.lock.acquire():
             return func(self, *args, **kwargs)
 
@@ -50,6 +55,9 @@ def ensure_repo_lock[R](func: Callable[..., R]) -> Callable[..., R]:
 
 
 class DatasetStageItem:
+    identifier: str
+    metadata: dict[str, Any] | None
+
     def __init__(self, dataset: Dataset):
         self.identifier = dataset.identifier
         self.metadata = dataset.dvc_metadata
@@ -173,7 +181,7 @@ class Repository:
         with self.dvc_repo.switch(rev):
             yield
 
-    def _get_from_dvc_cache(self, identifier: str, metadata: dict) -> Path | None:
+    def _get_from_dvc_cache(self, identifier: str, metadata: dict[str, Any]) -> Path | None:
         repo_cache: LocalHashFileDB = self.dvc_repo.cache.repo
         legacy_cache: LocalHashFileDB = self.dvc_repo.cache.legacy
         assert len(metadata['outs']) == 1
@@ -193,7 +201,7 @@ class Repository:
         assert isinstance(commit, Commit)
         return commit
 
-    def _get_dvc_metadata(self, identifier: str, commit: Commit | None = None) -> dict:
+    def _get_dvc_metadata(self, identifier: str, commit: Commit | None = None) -> dict[str, Any]:
         if commit is None:
             commit = self._get_git_commit()
 
@@ -211,7 +219,7 @@ class Repository:
         datasets_to_pull = set()
         commit = self._get_git_commit()
 
-        ds_file_meta: list[tuple[str, Path | None, dict]] = []
+        ds_file_meta: list[tuple[str, Path | None, dict[str, Any]]] = []
 
         for identifier in identifiers:
             dvc_data = self._get_dvc_metadata(identifier, commit)
@@ -377,7 +385,7 @@ class Repository:
                 dvc_file_path.unlink()
 
             self.log_debug(f"Add file {path} to DVC")
-            self.dvc_repo.add(targets=[str(path)], force=True, remote=self.dvc_remote)  # type: ignore
+            self.dvc_repo.add(targets=[str(path)], force=True, remote=self.dvc_remote)  # type: ignore  # pyright: ignore
 
             self.log_debug(f"Set metadata to {stage_item.metadata}")
             set_dvc_file_metadata(dvc_file_path, stage_item.metadata)
@@ -387,7 +395,7 @@ class Repository:
             for fn in (dvc_file_path, gitignore_path):
                 index.add(str(fn.relative_to(self.repo_dir)))
             self.log_debug(f"Push file {dvc_file_path} to DVC remote {self.dvc_remote}")
-            self.dvc_repo.push(str(dvc_file_path), remote=self.dvc_remote)
+            self.dvc_repo.push(str(dvc_file_path), remote=self.dvc_remote)  # pyright: ignore
 
         index.write()
         # Commit and push

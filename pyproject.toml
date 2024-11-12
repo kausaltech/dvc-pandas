@@ -42,6 +42,8 @@ dev-dependencies = [
     "uv>=0.4.9",
     "mypy>=1.11.2",
     "twine>=5.1.1",
+    "pyarrow-stubs>=17.11",
+    "types-pygit2>=1.15.0.20241020",
 ]
 
 [tool.mypy]
@@ -54,6 +56,14 @@ exclude = [
     ".venv",
 ]
 target-version = "py312"
+
+[tool.pyright]
+pythonVersion = "3.12"
+reportIgnoreCommentWithoutRule = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportImplicitOverride = false
+reportAny = false
 
 [tool.ruff.lint]
 select = ["ALL"]

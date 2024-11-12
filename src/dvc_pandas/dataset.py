@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import dataclasses
-from datetime import datetime
 import json
-from pathlib import Path
-from typing import cast
+from copy import deepcopy
+from typing import TYPE_CHECKING, Any, Self, cast
 
 import polars as pl
-from pyarrow.parquet import core as pq
 import pyarrow as pa
+from pyarrow.parquet import core as pq
+
+if TYPE_CHECKING:
+    from datetime import datetime
+    from pathlib import Path
 
 
 @dataclasses.dataclass
@@ -18,7 +20,7 @@ class DatasetMeta:
     modified_at: datetime | None = None
     units: dict[str, str] | None = None
     index_columns: list[str] | None = None
-    metadata: dict | None = None
+    metadata: dict[str, Any] | None = None
     hash: str | None = None
 
 
@@ -28,12 +30,13 @@ class Dataset:
     units: dict[str, str] | None
     index_columns: list[str] | None
     hash: str | None
+    metadata: dict[str, Any] | None
 
     df: pl.DataFrame | None
 
     @classmethod
     def read_parquet_schema(cls, path: Path) -> pa.Schema:
-        return pq.read_schema(str(path))
+        return cast(pa.Schema, pq.read_schema(str(path)))  # pyright: ignore
 
     @classmethod
     def update_meta_from_parquet(cls, schema: pa.Schema, meta: DatasetMeta) -> DatasetMeta:
@@ -62,7 +65,7 @@ class Dataset:
         return meta
 
     @classmethod
-    def from_parquet(cls, path: Path, meta: DatasetMeta):
+    def from_parquet(cls, path: Path, meta: DatasetMeta) -> Self:
         schema = cls.read_parquet_schema(path)
         meta = cls.update_meta_from_parquet(schema, meta)
         try:
@@ -88,11 +91,11 @@ class Dataset:
         if metadata and 'units' in metadata:
             raise ValueError("Dataset metadata may not contain the key 'units'.")
         units = meta.units
-        if units is not None:
-            if df is not None:
-                for column in units.keys():
-                    if column not in df.columns:
-                        raise ValueError(f"Unit specified for unknown column name '{column}'.")
+        if units is not None and df is not None:
+            for column in units.keys():
+                if column not in df.columns:
+                    msg = f"Unit specified for unknown column name '{column}'."
+                    raise ValueError(msg)
 
         self.identifier = meta.identifier
         self.units = meta.units
@@ -104,7 +107,14 @@ class Dataset:
 
     @property
     def meta(self) -> DatasetMeta:
-        return DatasetMeta(self.identifier, modified_at=self.modified_at, units=self.units, index_columns=self.index_columns, metadata=self.metadata, hash=self.hash)
+        return DatasetMeta(
+            self.identifier,
+            modified_at=self.modified_at,
+            units=self.units,
+            index_columns=self.index_columns,
+            metadata=self.metadata,
+            hash=self.hash,
+        )
 
     def copy(self):
         df = self.df
@@ -113,7 +123,7 @@ class Dataset:
         return Dataset(df, meta=deepcopy(self.meta))
 
     @property
-    def dvc_metadata(self) -> dict | None:
+    def dvc_metadata(self) -> dict[str, Any] | None:
         """
         Return the metadata as it should be stored in the .dvc file.
 
@@ -128,7 +138,7 @@ class Dataset:
             metadata['units'] = self.units
         return metadata
 
-    def _replace_table_metadata(self, table: pa.Table, pandas_md: dict) -> pa.Table:
+    def _replace_table_metadata(self, table: pa.Table, pandas_md: dict[str, Any]) -> pa.Table:
         assert table.schema.metadata is not None
         new_md = deepcopy(table.schema.metadata)
         new_md[b'pandas'] = json.dumps(pandas_md).encode('utf8')
@@ -144,7 +154,7 @@ class Dataset:
             df = df.set_index(self.index_columns)
 
         table = pa.Table.from_pandas(df)
-        pd_meta = table.schema.pandas_metadata
+        pd_meta: dict[str, Any] = table.schema.pandas_metadata
         assert pd_meta is not None
         if self.units:
             for col_name, unit in self.units.items():
@@ -162,5 +172,5 @@ class Dataset:
         table = self._replace_table_metadata(table, pd_meta)
         pq.write_table(table, str(path), compression='snappy')
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.identifier
