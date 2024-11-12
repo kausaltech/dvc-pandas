@@ -86,7 +86,7 @@ class GitRemoteCallbacks(pygit2.RemoteCallbacks):
             return pygit2.Username("git")
         if allowed_types & pygit2.enums.CredentialType.SSH_KEY:
             if not creds.git_ssh_public_key_file or not creds.git_ssh_private_key_file:
-                raise AuthenticationDetailsUnavailableError("Requested username and password, but they were not supplied")
+                raise AuthenticationDetailsUnavailableError("Requested SSH key, but it was not supplied")
             return pygit2.Keypair("git", creds.git_ssh_public_key_file, creds.git_ssh_private_key_file, "")
         raise Exception("git requested unknown credentials: 0x%x" % allowed_types)
 
@@ -375,18 +375,26 @@ class Repository:
         if self.read_only:
             raise ValueError("add was called while repository is read-only.")
         index = self.git_repo.index
-        for stage_item in self.dataset_stage:
-            path = self.repo_dir / (stage_item.identifier + '.parquet')
+        add_targets: list[str] = []
 
+        parquet_paths: list[Path] = []
+        dvc_file_paths: list[Path] = []
+
+        for stage_item in self.dataset_stage:
+            parquet_path = self.repo_dir / (stage_item.identifier + '.parquet')
+            parquet_paths.append(parquet_path)
             # Remove old .dvc file (if it exists) and replace it with a new one
-            dvc_file_path = path.with_suffix('.parquet.dvc')
+            dvc_file_path = parquet_path.with_suffix('.parquet.dvc')
+            dvc_file_paths.append(dvc_file_path)
             if dvc_file_path.exists():
                 self.log_debug(f"Remove file {dvc_file_path} from DVC")
                 dvc_file_path.unlink()
 
-            self.log_debug(f"Add file {path} to DVC")
-            self.dvc_repo.add(targets=[str(path)], force=True, remote=self.dvc_remote)  # type: ignore  # pyright: ignore
+        parquet_paths_str = [str(p) for p in parquet_paths]
+        self.log_info(f"Add files {', '.join(parquet_paths_str)} to DVC")
+        self.dvc_repo.add(targets=parquet_paths_str, force=True, remote=self.dvc_remote)  # type: ignore  # pyright: ignore
 
+        for stage_item, dvc_file_path in zip(self.dataset_stage, dvc_file_paths):
             self.log_debug(f"Set metadata to {stage_item.metadata}")
             set_dvc_file_metadata(dvc_file_path, stage_item.metadata)
 
@@ -394,8 +402,9 @@ class Repository:
             gitignore_path = dvc_file_path.parent / '.gitignore'
             for fn in (dvc_file_path, gitignore_path):
                 index.add(str(fn.relative_to(self.repo_dir)))
-            self.log_debug(f"Push file {dvc_file_path} to DVC remote {self.dvc_remote}")
-            self.dvc_repo.push(str(dvc_file_path), remote=self.dvc_remote)  # pyright: ignore
+
+        self.log_info(f"Push files {', '.join(parquet_paths_str)} to DVC remote {self.dvc_remote}")
+        self.dvc_repo.push(parquet_paths_str, remote=self.dvc_remote)  # pyright: ignore
 
         index.write()
         # Commit and push
@@ -405,7 +414,11 @@ class Repository:
             return
 
         identifiers = [stage_item.identifier for stage_item in self.dataset_stage]
-        commit_message = f"Update {', '.join(identifiers)}"
+        if len(identifiers) > 3:
+            first_three = identifiers[:3]
+            commit_message = f"Update {', '.join(first_three)} and {len(identifiers) - 3} other datasets"
+        else:
+            commit_message = f"Update {', '.join(identifiers)}"
         self.log_debug(f"Create commit: {commit_message}")
         ref = self.git_repo.head.name
         tree = index.write_tree()
