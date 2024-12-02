@@ -346,7 +346,7 @@ class Repository:
             self.push()
         except Exception:
             # Restore original data
-            self.git_repo.reset(prev_head, reset_type=ResetMode.MIXED)
+            self.git_repo.reset(prev_head, ResetMode.MIXED)
             # Remove rolled back stuff that may be left on the remote
             # self.dvc_repo.gc(all_commits=True, cloud=True, remote=self.dvc_remote)
             # TODO: Before reinstating the previous line, make sure gc doesn't delete blobs for which we don't have
