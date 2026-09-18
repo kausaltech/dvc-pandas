@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
+    from .manifest import DatasetManifest
+
 
 @dataclasses.dataclass
 class DatasetMeta:
@@ -22,6 +24,7 @@ class DatasetMeta:
     index_columns: list[str] | None = None
     metadata: dict[str, Any] | None = None
     hash: str | None = None
+    manifest: DatasetManifest | None = None
 
 
 class Dataset:
@@ -30,6 +33,7 @@ class Dataset:
     units: dict[str, str] | None
     index_columns: list[str] | None
     hash: str | None
+    manifest: DatasetManifest | None
     metadata: dict[str, Any] | None
 
     df: pl.DataFrame | None
@@ -48,7 +52,14 @@ class Dataset:
         if meta.index_columns is None:
             index_columns = pdmeta.get('index_columns')
             if index_columns is not None:
-                meta = dataclasses.replace(meta, index_columns=index_columns)
+                meta = dataclasses.replace(
+                    meta,
+                    index_columns=[
+                        column if isinstance(column, str) else column['name']
+                        for column in index_columns
+                        if isinstance(column, str) or column.get('name') is not None
+                    ],
+                )
 
         if meta.units is None:
             units = {}
@@ -72,6 +83,12 @@ class Dataset:
             pldf = pl.read_parquet(path)
         except Exception:
             pldf = pl.read_parquet(path, use_pyarrow=True)
+        # Arrow may store a named RangeIndex only in metadata, not in the file columns.
+        for index in (schema.pandas_metadata or {}).get('index_columns', []):
+            if isinstance(index, dict) and index.get('kind') == 'range':
+                name = index.get('name')
+                if name is not None and name not in pldf.columns:
+                    pldf = pldf.with_columns(pl.Series(name, range(index['start'], index['stop'], index['step'])))
         return cls(pldf, meta)
 
     def __init__(self, df: pl.DataFrame | None, meta: DatasetMeta):
@@ -103,6 +120,7 @@ class Dataset:
         self.metadata = meta.metadata
         self.modified_at = meta.modified_at
         self.hash = meta.hash
+        self.manifest = meta.manifest
         self.df = df
 
     @property
@@ -114,6 +132,7 @@ class Dataset:
             index_columns=self.index_columns,
             metadata=self.metadata,
             hash=self.hash,
+            manifest=self.manifest,
         )
 
     def copy(self):
@@ -153,7 +172,7 @@ class Dataset:
         if self.index_columns:
             df = df.set_index(self.index_columns)
 
-        table = pa.Table.from_pandas(df)
+        table = pa.Table.from_pandas(df, preserve_index=bool(self.index_columns))
         pd_meta: dict[str, Any] = table.schema.pandas_metadata
         assert pd_meta is not None
         if self.units:

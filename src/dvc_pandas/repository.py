@@ -20,6 +20,8 @@ from pygit2.enums import CredentialType, RepositoryOpenFlag, ResetMode
 
 from .dataset import Dataset, DatasetMeta
 from .dvc import set_dvc_file_metadata
+from .loader import DatasetLoader
+from .manifest import DatasetManifest, RepositoryManifest
 from .utils import get_cache_repo_dir
 
 if TYPE_CHECKING:
@@ -215,7 +217,61 @@ class Repository:
         blob: Blob = cast(Blob, git_tree[str(meta_path)])
         return yaml.load(blob.data, yaml.CSafeLoader)
 
+    def get_dataset_manifest(self, identifier: str) -> DatasetManifest:
+        """Resolve source metadata and the exact remote object path at this revision."""
+        commit = self._get_git_commit()
+        data = self._get_dvc_metadata(identifier, commit)
+        if len(data['outs']) != 1:
+            raise ValueError('Dataset manifests require exactly one Parquet output')
+        output = data['outs'][0]
+        # Older DVC metadata omits `hash` and uses the legacy remote layout.
+        odb = self.dvc_repo.cloud.get_remote_odb(
+            name=self.dvc_remote, hash_name=output.get('hash', 'md5-dos2unix'),
+        )
+        protocol = odb.fs.protocol
+        object_path = odb.oid_to_path(output['md5'])
+        if protocol == 'local':
+            object_url = Path(object_path).absolute().as_uri()
+        elif protocol == 's3':
+            object_url = 's3://' + object_path
+        else:
+            message = f'Manifests do not yet support remote protocol {protocol}'
+            raise ValueError(message)
+        config = odb.fs.config
+        metadata = dict(data.get('meta') or {})
+        return DatasetManifest(
+            repository_url=str(self.repo_url), revision=str(commit.id), identifier=identifier,
+            content_hash=output['md5'], object_url=object_url,
+            endpoint_url=config.get('endpointurl'), region=config.get('region'),
+            modified_at=datetime.fromtimestamp(commit.commit_time, tz=UTC),
+            units=metadata.pop('units', None), index_columns=metadata.pop('index_columns', None),
+            metadata=metadata if data.get('meta') is not None else None,
+        )
+
+    def get_manifest(self, identifiers: list[str]) -> RepositoryManifest:
+        """Resolve a serializable manifest for the requested dataset identifiers."""
+        return RepositoryManifest(
+            repository_url=str(self.repo_url), revision=self.commit_id,
+            datasets={identifier: self.get_dataset_manifest(identifier) for identifier in identifiers},
+        )
+
     def _load_datasets(self, identifiers: list[str]) -> list[Dataset]:
+        if not identifiers:
+            return []
+        odb = self.dvc_repo.cloud.get_remote_odb(name=self.dvc_remote)
+        if odb.fs.protocol not in ('local', 's3'):
+            # Preserve existing DVC backends until their manifest transport is supported.
+            return self._load_datasets_legacy(identifiers)
+        datasets = []
+        loader = DatasetLoader(
+            cache_root=self.dvc_repo.cache.repo.path, storage_options=odb.fs.fs.storage_options,
+        )
+        for identifier in identifiers:
+            manifest = self.get_dataset_manifest(identifier)
+            datasets.append(loader.load(manifest))
+        return datasets
+
+    def _load_datasets_legacy(self, identifiers: list[str]) -> list[Dataset]:
         datasets_to_pull = set()
         commit = self._get_git_commit()
 

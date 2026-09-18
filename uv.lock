@@ -996,10 +996,12 @@ dependencies = [
     { name = "dvc" },
     { name = "dvc-s3" },
     { name = "filelock" },
+    { name = "fsspec" },
     { name = "pandas" },
     { name = "pint-pandas" },
     { name = "polars" },
     { name = "pyarrow" },
+    { name = "pydantic" },
     { name = "pygit2" },
     { name = "python-snappy" },
     { name = "ruamel-yaml" },
@@ -1009,6 +1011,7 @@ dependencies = [
 dev = [
     { name = "mypy" },
     { name = "pyarrow-stubs" },
+    { name = "pytest" },
     { name = "ruff" },
     { name = "twine" },
     { name = "types-pygit2" },
@@ -1021,10 +1024,12 @@ requires-dist = [
     { name = "dvc", specifier = ">=3.54.1" },
     { name = "dvc-s3", specifier = ">=3.2.0" },
     { name = "filelock", specifier = ">=3.15.4" },
+    { name = "fsspec", specifier = ">=2024.6.0" },
     { name = "pandas", specifier = ">=2.2.2" },
     { name = "pint-pandas", specifier = ">=0.6.2" },
     { name = "polars", specifier = ">=1.5.0" },
     { name = "pyarrow", specifier = ">=17.0.0" },
+    { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "pygit2", specifier = ">=1.15.1" },
     { name = "python-snappy", specifier = ">=0.7.2" },
     { name = "ruamel-yaml", specifier = ">=0.18.6" },
@@ -1034,6 +1039,7 @@ requires-dist = [
 dev = [
     { name = "mypy", specifier = ">=1.11.2" },
     { name = "pyarrow-stubs", specifier = ">=17.11" },
+    { name = "pytest", specifier = ">=8.3" },
     { name = "ruff", specifier = ">=0.6.4" },
     { name = "twine", specifier = ">=5.1.1" },
     { name = "types-pygit2", specifier = ">=1.15.0.20241020" },
@@ -3230,4 +3236,40 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/10/9a/2fef89272d98b799e4daa50201c5582ec76bdd4e92a1a7e3deb74c52b7fa/zc_lockfile-4.0.tar.gz", hash = "sha256:d3ab0f53974296a806db3219b9191ba0e6d5cbbd1daa2e0d17208cb9b29d2102", size = 10956 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3b/7f/3a614b65bc4b181578b1d50a78663ee02d5d2d3b859712f3d3597c8afe6f/zc_lockfile-4.0-py3-none-any.whl", hash = "sha256:aa3aa295257bebaa09ea9ad5cb288bf9f98f88de6932f96b6659f62715d83581", size = 9143 },
+]
+
+[[package]]
+name = "iniconfig"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/34/14ca021ce8e5dfedc35312d08ba8bf51fdd999c576889fc2c24cb97f4f10/iniconfig-2.3.0.tar.gz", hash = "sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730", size = 20503, upload-time = "2025-10-18T21:55:43.219Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl", hash = "sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12", size = 7484, upload-time = "2025-10-18T21:55:41.639Z" },
+]
+
+
+[[package]]
+name = "pluggy"
+version = "1.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+
+[[package]]
+name = "pytest"
+version = "9.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "iniconfig" },
+    { name = "packaging" },
+    { name = "pluggy" },
+    { name = "pygments" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e4/47/b9efed96c114afcfa3c9d3fe98a76a1d14c74a9e266d397cf6eb64be5e01/pytest-9.1.1.tar.gz", hash = "sha256:1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313", size = 1636369, upload-time = "2026-06-19T10:58:32.857Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/24/25/1de2678b631f5a49215c6c96fff41ba892b0a34df68d6d80292b1b48aa7f/pytest-9.1.1-py3-none-any.whl", hash = "sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c", size = 386536, upload-time = "2026-06-19T10:58:31.347Z" },
 ]
