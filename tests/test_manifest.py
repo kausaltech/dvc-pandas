@@ -11,9 +11,10 @@ import fsspec
 import polars as pl
 import pytest
 import yaml
-from dvc_pandas import Dataset, DatasetLoader, DatasetManifest, Repository, RepositoryManifest
 from polars.testing import assert_frame_equal
 from pydantic import ValidationError
+
+from dvc_pandas import Dataset, DatasetLoader, DatasetManifest, Repository, RepositoryManifest
 
 from .helpers import git
 
@@ -93,6 +94,24 @@ def test_manifest_validation(source: tuple[Repository, Path, pl.DataFrame]) -> N
     ]:
         with pytest.raises(ValidationError):
             DatasetManifest.model_validate({**manifest, field: value})
+
+
+def test_manifest_preserves_range_index_descriptor(source: tuple[Repository, Path, pl.DataFrame]) -> None:
+    repo, _, _ = source
+    path = repo.repo_dir / 'activity.parquet.dvc'
+    data = yaml.safe_load(path.read_text())
+    descriptor = {'kind': 'range', 'name': None, 'start': 0, 'stop': 2, 'step': 1}
+    data['meta']['index_columns'] = [descriptor]
+    path.write_text(yaml.safe_dump(data))
+    git(repo.repo_dir, 'add', 'activity.parquet.dvc')
+    git(repo.repo_dir, '-c', 'commit.gpgsign=false', 'commit', '-m', 'Use RangeIndex metadata')
+
+    manifest = repo.get_dataset_manifest('activity')
+    restored = DatasetManifest.model_validate_json(manifest.model_dump_json())
+
+    assert restored.index_columns == [descriptor]
+    loaded = DatasetLoader(cache_root=repo.repo_dir / '.manifest-cache').load(restored)
+    assert loaded.index_columns == [descriptor]
 
 
 def test_legacy_remote_layout(source: tuple[Repository, Path, pl.DataFrame], tmp_path: Path) -> None:

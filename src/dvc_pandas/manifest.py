@@ -1,10 +1,23 @@
 from __future__ import annotations
 
 from datetime import datetime  # noqa: TC003 - Pydantic evaluates this annotation
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
+
+
+class RangeIndexDescriptor(TypedDict):
+    """Arrow's metadata-only representation of a pandas RangeIndex."""
+
+    kind: Literal["range"]
+    name: JsonValue
+    start: int
+    stop: int
+    step: int
+
+
+type IndexColumn = str | RangeIndexDescriptor
 
 
 class DatasetManifest(BaseModel):
@@ -23,7 +36,7 @@ class DatasetManifest(BaseModel):
     region: str | None = None
     modified_at: datetime
     units: dict[str, str] | None = None
-    index_columns: list[str] | None = None
+    index_columns: list[IndexColumn] | None = None
     metadata: dict[str, Any] | None = None
 
     @field_validator("repository_url", "object_url", "endpoint_url")

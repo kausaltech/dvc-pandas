@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
-    from .manifest import DatasetManifest
+    from .manifest import DatasetManifest, IndexColumn
 
 
 @dataclasses.dataclass
@@ -21,7 +21,7 @@ class DatasetMeta:
     identifier: str
     modified_at: datetime | None = None
     units: dict[str, str] | None = None
-    index_columns: list[str] | None = None
+    index_columns: list[IndexColumn] | None = None
     metadata: dict[str, Any] | None = None
     hash: str | None = None
     manifest: DatasetManifest | None = None
@@ -31,7 +31,7 @@ class Dataset:
     identifier: str
     modified_at: datetime | None
     units: dict[str, str] | None
-    index_columns: list[str] | None
+    index_columns: list[IndexColumn] | None
     hash: str | None
     manifest: DatasetManifest | None
     metadata: dict[str, Any] | None
