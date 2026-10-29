@@ -109,9 +109,11 @@ def test_manifest_preserves_range_index_descriptor(source: tuple[Repository, Pat
     manifest = repo.get_dataset_manifest('activity')
     restored = DatasetManifest.model_validate_json(manifest.model_dump_json())
 
+    # The manifest records the .dvc file as it is; the dataset exposes column names only,
+    # and an unnamed RangeIndex names no column.
     assert restored.index_columns == [descriptor]
     loaded = DatasetLoader(cache_root=repo.repo_dir / '.manifest-cache').load(restored)
-    assert loaded.index_columns == [descriptor]
+    assert loaded.index_columns == []
 
 
 def test_legacy_remote_layout(source: tuple[Repository, Path, pl.DataFrame], tmp_path: Path) -> None:

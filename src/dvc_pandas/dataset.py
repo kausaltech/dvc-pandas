@@ -10,10 +10,29 @@ import pyarrow as pa
 from pyarrow.parquet import core as pq
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import datetime
     from pathlib import Path
 
     from .manifest import DatasetManifest, IndexColumn
+
+
+def index_column_names(index_columns: Sequence[IndexColumn] | None) -> list[str] | None:
+    """
+    Reduce index column entries to the column names they stand for.
+
+    Arrow describes an unnamed pandas RangeIndex with a descriptor dict rather than a column
+    name. A named descriptor stands for that column; an unnamed one stands for none.
+    """
+    if index_columns is None:
+        return None
+    names: list[str] = []
+    for column in index_columns:
+        if isinstance(column, str):
+            names.append(column)
+        elif isinstance(column.get('name'), str):
+            names.append(cast('str', column['name']))
+    return names
 
 
 @dataclasses.dataclass
@@ -52,14 +71,8 @@ class Dataset:
         if meta.index_columns is None:
             index_columns = pdmeta.get('index_columns')
             if index_columns is not None:
-                meta = dataclasses.replace(
-                    meta,
-                    index_columns=[
-                        column if isinstance(column, str) else column['name']
-                        for column in index_columns
-                        if isinstance(column, str) or column.get('name') is not None
-                    ],
-                )
+                names = cast('list[IndexColumn] | None', index_column_names(index_columns))
+                meta = dataclasses.replace(meta, index_columns=names)
 
         if meta.units is None:
             units = {}
@@ -116,7 +129,8 @@ class Dataset:
 
         self.identifier = meta.identifier
         self.units = meta.units
-        self.index_columns = meta.index_columns
+        # Older .dvc files may carry Arrow's RangeIndex descriptors; only names are meaningful here.
+        self.index_columns = cast('list[IndexColumn] | None', index_column_names(meta.index_columns))
         self.metadata = meta.metadata
         self.modified_at = meta.modified_at
         self.hash = meta.hash
@@ -146,16 +160,40 @@ class Dataset:
         """
         Return the metadata as it should be stored in the .dvc file.
 
-        Physical units will be stored as part of the metadata using the key `units`.
+        Physical units will be stored as part of the metadata using the key `units`, and the
+        index columns, as column names, using the key `index_columns`, so that a reader learns a
+        dataset's shape from the .dvc file without fetching the data. A dataset with a frame always
+        records them; an empty list says the data has no index columns.
         """
-        if self.metadata is None and self.units is None:
+        recorded = self._index_columns_to_record()
+        if self.metadata is None and self.units is None and recorded is None:
             return None
-        metadata = {}
-        if self.metadata is not None:
-            metadata = self.metadata
+        metadata = dict(self.metadata) if self.metadata is not None else {}
         if self.units is not None:
             metadata['units'] = self.units
+        if recorded is not None:
+            metadata['index_columns'] = recorded
         return metadata
+
+    def _index_columns_to_record(self) -> list[str] | None:
+        own = index_column_names(self.index_columns)
+        stated = None
+        if self.metadata is not None and 'index_columns' in self.metadata:
+            stated = index_column_names(self.metadata['index_columns'])
+            if own is not None and stated != own:
+                msg = f'metadata index_columns {stated} disagree with the dataset index columns {own}.'
+                raise ValueError(msg)
+        recorded = own if own is not None else stated
+        if self.df is None:
+            return recorded
+        if recorded is None:
+            # The frame is written without an index, which is what an empty list records.
+            return []
+        missing = [column for column in recorded if column not in self.df.columns]
+        if missing:
+            msg = f'Index columns {missing} are not columns of the dataset.'
+            raise ValueError(msg)
+        return recorded
 
     def _replace_table_metadata(self, table: pa.Table, pandas_md: dict[str, Any]) -> pa.Table:
         assert table.schema.metadata is not None
